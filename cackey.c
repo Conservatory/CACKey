@@ -182,7 +182,7 @@ static time_t cackey_debug_start_time = 0;
 #  define CACKEY_DEBUG_PRINTF(x...) { CACKEY_DEBUG_PRINTTIME; fprintf(cackey_debug_fd(), "%s():%i: ", __func__, __LINE__); fprintf(cackey_debug_fd(), x); fprintf(cackey_debug_fd(), "\n"); fflush(cackey_debug_fd()); }
 #  define CACKEY_DEBUG_PRINTBUF(f, x, y) { unsigned char *TMPBUF; unsigned long idx; TMPBUF = (unsigned char *) (x); CACKEY_DEBUG_PRINTTIME; fprintf(cackey_debug_fd(), "%s():%i: %s  (%s/%lu = {%02x", __func__, __LINE__, f, #x, (unsigned long) (y), TMPBUF[0]); for (idx = 1; idx < (y); idx++) { fprintf(cackey_debug_fd(), ", %02x", TMPBUF[idx]); }; fprintf(cackey_debug_fd(), "})\n"); fflush(cackey_debug_fd()); }
 #  define CACKEY_DEBUG_PERROR(x) { fprintf(cackey_debug_fd(), "%s():%i: ", __func__, __LINE__); CACKEY_DEBUG_PRINTTIME; perror(x); fflush(cackey_debug_fd()); }
-#  define free(x) { CACKEY_DEBUG_PRINTF("FREE(%p) (%s)", x, #x); free(x); }
+#  define free(x) { CACKEY_DEBUG_PRINTF("FREE(%p) (%s)", (void *) x, #x); free(x); }
 
 static FILE *cackey_debug_fd(void) {
 	static FILE *fd = NULL;
@@ -223,7 +223,7 @@ static FILE *cackey_debug_fd(void) {
 	if (fd == stderr) {
 		CACKEY_DEBUG_PRINTF("Returning stderr");
 	} else {
-		CACKEY_DEBUG_PRINTF("Returning %p", fd);
+		CACKEY_DEBUG_PRINTF("Returning %p", (void *) fd);
 	}
 
 	return(fd);
@@ -3367,7 +3367,7 @@ static CK_ATTRIBUTE_PTR cackey_get_attributes(CK_OBJECT_CLASS objectclass, struc
 
 	*pulCount = numattrs;
 
-	CACKEY_DEBUG_PRINTF("Returning %lu objects (%p).", numattrs, retval);
+	CACKEY_DEBUG_PRINTF("Returning %lu objects (%p).", numattrs, (void *) retval);
 
 	return(retval);
 }
@@ -5750,7 +5750,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_SignInit)(CK_SESSION_HANDLE hSession, CK_MECHANISM_P
 	cackey_sessions[hSession].sign_bufused = 0;
 	cackey_sessions[hSession].sign_buf = malloc(sizeof(*cackey_sessions[hSession].sign_buf) * cackey_sessions[hSession].sign_buflen);
 
-	CACKEY_DEBUG_PRINTF("Session %lu sign_identity is %p (identity #%lu)", (unsigned long) hSession, &cackey_sessions[hSession].identities[hKey], (unsigned long) hKey);
+	CACKEY_DEBUG_PRINTF("Session %lu sign_identity is %p (identity #%lu)", (unsigned long) hSession, (void *) &cackey_sessions[hSession].identities[hKey], (unsigned long) hKey);
 	cackey_sessions[hSession].sign_identity = &cackey_sessions[hSession].identities[hKey];
 
 	mutex_retval = cackey_mutex_unlock(cackey_biglock);
@@ -6012,7 +6012,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_SignFinal)(CK_SESSION_HANDLE hSession, CK_BYTE_PTR p
 	switch (cackey_sessions[hSession].sign_mechanism) {
 		case CKM_RSA_PKCS:
 			/* Ask card to sign */
-			CACKEY_DEBUG_PRINTF("Asking to sign from identity %p in session %lu", cackey_sessions[hSession].sign_identity, (unsigned long) hSession);
+			CACKEY_DEBUG_PRINTF("Asking to sign from identity %p in session %lu", (void *) cackey_sessions[hSession].sign_identity, (unsigned long) hSession);
 			sigbuflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].sign_identity, cackey_sessions[hSession].sign_buf, cackey_sessions[hSession].sign_bufused, sigbuf, sizeof(sigbuf), 1, 0);
 
 			if (sigbuflen < 0) {
