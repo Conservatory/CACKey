@@ -3833,6 +3833,13 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 		return(CKR_BUFFER_TOO_SMALL);	
 	}
 
+	mutex_retval = cackey_mutex_lock(cackey_biglock);
+	if (mutex_retval != 0) {
+		CACKEY_DEBUG_PRINTF("Error.  Locking failed.");
+
+		return(CKR_GENERAL_ERROR);
+	}
+
 	slot_idx = 0;
 	for (currslot = 0; (currslot < (sizeof(cackey_slots) / sizeof(cackey_slots[0]))); currslot++) {
 		if (!cackey_slots[currslot].active) {
@@ -3840,15 +3847,20 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 		}
 
 		if (slot_idx >= count) {
-			CACKEY_DEBUG_PRINTF("Error. User allocated %lu entries, but we just tried to write to the %lu index.", count, slot_idx);
+			CACKEY_DEBUG_PRINTF("Error. User allocated %lu entries, but we just tried to write to the %lu index -- ignoring", count, slot_idx);
 
-			CACKEY_DEBUG_PRINTF("Returning CKR_BUFFER_TOO_SMALL");
-
-			return(CKR_BUFFER_TOO_SMALL);	
+			continue;
 		}
 
 		pSlotList[slot_idx] = currslot;
 		slot_idx++;
+	}
+
+	mutex_retval = cackey_mutex_unlock(cackey_biglock);
+	if (mutex_retval != 0) {
+		CACKEY_DEBUG_PRINTF("Error.  Unlocking failed.");
+
+		return(CKR_GENERAL_ERROR);
 	}
 
 	*pulCount = slot_count;
