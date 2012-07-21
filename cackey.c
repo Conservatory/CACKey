@@ -3413,11 +3413,32 @@ static void cackey_free_identities(struct cackey_identity *identities, unsigned 
 	free(identities);
 }
 
+static unsigned long cackey_read_dod_identities(struct cackey_identity *identities, unsigned long id_idx, unsigned long num_dod_certs) {
+	unsigned long cert_idx;
+
+	for (cert_idx = 0; cert_idx < num_dod_certs; cert_idx++) {
+		identities[id_idx].pcsc_identity = NULL;
+		identities[id_idx].attributes = cackey_get_attributes(CKO_CERTIFICATE, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
+		id_idx++;
+
+		identities[id_idx].pcsc_identity = NULL;
+		identities[id_idx].attributes = cackey_get_attributes(CKO_PUBLIC_KEY, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
+		id_idx++;
+
+		identities[id_idx].pcsc_identity = NULL;
+		identities[id_idx].attributes = cackey_get_attributes(CKO_NETSCAPE_TRUST, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
+		id_idx++;
+	}
+
+	return(id_idx);
+}
+
 static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, unsigned long *ids_found) {
 	struct cackey_pcsc_identity *pcsc_identities;
 	struct cackey_identity *identities;
 	unsigned long num_ids, id_idx, curr_id_type;
 	unsigned long num_certs, num_dod_certs, cert_idx;
+	int include_extra_certs = 0;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -3427,27 +3448,33 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 		return(NULL);
 	}
 
-	if (slot->internal) {
-		/* Add DoD Certificates and Netscape Trust Objects */
+#ifdef CACKEY_CARD_SLOT_INCLUDE_EXTRA_CERTS
+	include_extra_certs = 1;
+#endif
+
+	if (getenv("CACKEY_DOD_CERTS_ON_HW_SLOTS") != NULL) {
+		include_extra_certs = 1;
+	}
+
+	if (getenv("CACKEY_NO_DOD_CERTS_ON_HW_SLOTS") != NULL) {
+		include_extra_certs = 0;
+	}
+
+	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
+		num_dod_certs = 0;
+	} else {
 		num_dod_certs = sizeof(extra_certs) / sizeof(extra_certs[0]);
+	}
 
-		num_ids = num_dod_certs * 3;
+	if (slot->internal) {
+		num_ids = num_dod_certs;
 
-		identities = malloc(num_ids * sizeof(*identities));
+		if (num_ids != 0) {
+			identities = malloc(num_ids * sizeof(*identities));
 
-		id_idx = 0;
-		for (cert_idx = 0; cert_idx < num_dod_certs; cert_idx++) {
-			identities[id_idx].pcsc_identity = NULL;
-			identities[id_idx].attributes = cackey_get_attributes(CKO_CERTIFICATE, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
-			id_idx++;
-
-			identities[id_idx].pcsc_identity = NULL;
-			identities[id_idx].attributes = cackey_get_attributes(CKO_PUBLIC_KEY, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
-			id_idx++;
-
-			identities[id_idx].pcsc_identity = NULL;
-			identities[id_idx].attributes = cackey_get_attributes(CKO_NETSCAPE_TRUST, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
-			id_idx++;
+			cackey_read_dod_identities(identities, 0, num_dod_certs);
+		} else {
+			identities = NULL;
 		}
 
 		*ids_found = num_ids;
@@ -3459,6 +3486,10 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 	if (pcsc_identities != NULL) {
 		/* Convert number of Certs to number of objects */
 		num_ids = (CKO_PRIVATE_KEY - CKO_CERTIFICATE + 1) * num_certs;
+
+		if (include_extra_certs) {
+			num_ids += num_dod_certs;
+		}
 
 		identities = malloc(num_ids * sizeof(*identities));
 
@@ -3478,12 +3509,19 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 			}
 		}
 
+		if (include_extra_certs) {
+			CACKEY_DEBUG_PRINTF("Including DoD Certificates on hardware slot");
+
+			cackey_read_dod_identities(identities, id_idx, num_dod_certs);
+		}
+
 		cackey_free_certs(pcsc_identities, num_certs, 1);
 
 		*ids_found = num_ids;
 
 		return(identities);
 	}
+
 
 	*ids_found = 0;
 	return(NULL);
