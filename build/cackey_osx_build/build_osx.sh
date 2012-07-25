@@ -16,6 +16,7 @@ usage() {
 	echo "    leopard  - (Builds Universal 10.5 Library for PPCG4/i386)"
 	echo "    snowleopard  - (Builds Universal 10.6 Library for i386/x86_64)"
 	echo "    lion  - (Builds Universal 10.7 Library for i386/x86_64)"
+	echo "    sltoml - (Builds Universal 10.6/10.7/10.8 Library for i386/x86_64)"
 	echo "    all - (Builds for all supported targets)"
 	echo "    clean - (Cleans up)"
 	echo "Run from CACKey Build Root."
@@ -44,6 +45,7 @@ makedir() {
 		mkdir macbuild/Leopard
 		mkdir macbuild/Snowleopard
 		mkdir macbuild/Lion
+		mkdir macbuild/Sltoml
 		mkdir macbuild/pkg
 	fi
 	if [ ! -f config.guess ]; then
@@ -111,6 +113,26 @@ lion() {
 	NEXTOSXVER=10.8
 	CUROSXVER=10.7
 	for HOST in i386-apple-darwin11 x86_64-apple-darwin11; do
+		genbuild
+	done
+	libbuild
+	pkgbuild
+}
+
+# Build function for Snow Leopard/Lion/Mountain Lion
+sltoml() {
+	makedir
+	HEADERS=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/Versions/A/Headers/
+	LIBRARY=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/PCSC
+	LIB=""
+	ARCHLIST=""
+	DLIB=""
+	DARCHLIST=""
+	OSX=Sltoml
+	PKTARGETOS=3
+	NEXTOSXVER=10.9
+	CUROSXVER=10.6
+	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
 		genbuild
 	done
 	libbuild
@@ -196,6 +218,10 @@ pkgbuild() {
 		cat build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml | sed 's|for Mac OS X Snowleopard|for Mac OS X SnowLeopard|g' > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new
 		mv build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml
 	fi
+	if [ ${OSX} == "Sltoml" ]; then
+		cat build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml | sed 's|for Mac OS X Sltoml|for Mac OS X SLtoML|g' > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new
+		mv build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml
+	fi
 	/Developer/Applications/Utilities/PackageMaker.app/Contents/MacOS/PackageMaker -d build/cackey_osx_build/${OSX}_pmbuild.pmdoc -o macbuild/pkg/CACKey_${CACKEY_VERSION}_${OSX}.${EXT}
 	tar --create --directory macbuild/pkg/ --file macbuild/pkg/CACKey_${CACKEY_VERSION}_${OSX}.${EXT}.tar CACKey_${CACKEY_VERSION}_${OSX}.${EXT}
 	gzip -9 macbuild/pkg/CACKey_${CACKEY_VERSION}_${OSX}.${EXT}.tar
@@ -229,12 +255,17 @@ case "$1" in
 		lion
 		exit $?
 	;;
+	
+	"sltoml")
+		./autogen.sh
+		sltoml
+		exit $?
+	;;
 
 	"all")
 		./autogen.sh
 		leopard
-		snowleopard
-		lion
+		sltoml
 		echo ""
 		echo "All builds complete."
 		exit $?
