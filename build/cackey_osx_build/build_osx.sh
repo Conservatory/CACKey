@@ -139,6 +139,26 @@ sltoml() {
 	pkgbuild
 }
 
+# Build function for Snow Leopard/Lion/Mountain Lion
+sltoml() {
+	makedir
+	HEADERS=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/Versions/A/Headers/
+	LIBRARY=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/PCSC
+	LIB=""
+	ARCHLIST=""
+	DLIB=""
+	DARCHLIST=""
+	OSX=Sltoml
+	PKTARGETOS=3
+	NEXTOSXVER=10.9
+	CUROSXVER=10.6
+	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
+		genbuild
+	done
+	libbuild
+	pkgbuild
+}
+
 # Generic build function
 genbuild() {
 	make distclean
@@ -152,12 +172,12 @@ genbuild() {
 	fi
 	if [ "${LIONBUILD}" = 1 ]; then
 		if [ "${ARCH}" == "ppc -mcpu=G4" ]; then
-			CC=powerpc-apple-darwin11-gcc-4.2.1 CPP=powerpc-apple-darwin11-cpp-4.2.1 CFLAGS="-m32 -I/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/gcc/powerpc-apple-darwin10/4.2.1/include -isysroot /Developer/SDKs/MacOSX10.5.sdk" CPPFLAGS="-D_LIBC_LIMITS_H_" ./configure --with-pcsc-headers=${HEADERS} --with-pcsc-libs=${LIBRARY} --host=${HOST}
+			CC=powerpc-apple-darwin11-gcc-4.2.1 CPP=powerpc-apple-darwin11-cpp-4.2.1 CFLAGS="-m32 -I/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/gcc/powerpc-apple-darwin10/4.2.1/include -isysroot /Developer/SDKs/MacOSX10.5.sdk" CPPFLAGS="-D_LIBC_LIMITS_H_" ./configure --with-pcsc-headers=${HEADERS} --with-pcsc-libs=${LIBRARY} --host=${HOST} --enable-dod-certs-on-hw-slots
 		else
-			CFLAGS="-arch ${ARCH}" ./configure --with-pcsc-headers=${HEADERS} --with-pcsc-libs=${LIBRARY} --host=${HOST}
+			CFLAGS="-arch ${ARCH}" ./configure --with-pcsc-headers=${HEADERS} --with-pcsc-libs=${LIBRARY} --host=${HOST} --enable-dod-certs-on-hw-slots
 		fi
 	else
-		CFLAGS="-arch ${ARCH}" ./configure --with-pcsc-headers=${HEADERS} --with-pcsc-libs=${LIBRARY} --host=${HOST}
+		CFLAGS="-arch ${ARCH}" ./configure --with-pcsc-headers=${HEADERS} --with-pcsc-libs=${LIBRARY} --host=${HOST} --enable-dod-certs-on-hw-slots
 	fi
 	make
 	cp libcackey.dylib macbuild/${OSX}/libcackey.dylib.`echo ${ARCH} | cut -d ' ' -f 1`

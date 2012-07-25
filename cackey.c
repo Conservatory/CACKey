@@ -713,6 +713,7 @@ struct cackey_session {
 
 struct cackey_slot {
 	int active;
+	int internal;
 
 	char *pcsc_reader;
 
@@ -857,6 +858,11 @@ static void cackey_slots_disconnect_all(void) {
 	CACKEY_DEBUG_PRINTF("Called.");
 
 	for (idx = 0; idx < (sizeof(cackey_slots) / sizeof(cackey_slots[0])); idx++) {
+		if (cackey_slots[idx].internal) {
+			/* Skip internal slots */
+			continue;
+		}
+
 		if (cackey_slots[idx].pcsc_card_connected) {
 			CACKEY_DEBUG_PRINTF("SCardDisconnect(%lu) called", (unsigned long) idx);
 
@@ -2607,6 +2613,12 @@ static cackey_ret cackey_token_present(struct cackey_slot *slot) {
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
+	if (slot->internal) {
+		CACKEY_DEBUG_PRINTF("Returning token present (internal token)");
+
+		return(CACKEY_PCSC_S_TOKENPRESENT);
+	}
+
 	pcsc_connect_ret = cackey_connect_card(slot);
 	if (pcsc_connect_ret != CACKEY_PCSC_S_OK) {
 		CACKEY_DEBUG_PRINTF("Unable to connect to card, returning token absent");
@@ -3401,28 +3413,34 @@ static void cackey_free_identities(struct cackey_identity *identities, unsigned 
 	free(identities);
 }
 
+static unsigned long cackey_read_dod_identities(struct cackey_identity *identities, unsigned long id_idx, unsigned long num_dod_certs) {
+	unsigned long cert_idx;
+
+	for (cert_idx = 0; cert_idx < num_dod_certs; cert_idx++) {
+		identities[id_idx].pcsc_identity = NULL;
+		identities[id_idx].attributes = cackey_get_attributes(CKO_CERTIFICATE, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
+		id_idx++;
+
+		identities[id_idx].pcsc_identity = NULL;
+		identities[id_idx].attributes = cackey_get_attributes(CKO_PUBLIC_KEY, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
+		id_idx++;
+
+		identities[id_idx].pcsc_identity = NULL;
+		identities[id_idx].attributes = cackey_get_attributes(CKO_NETSCAPE_TRUST, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
+		id_idx++;
+	}
+
+	return(id_idx);
+}
+
 static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, unsigned long *ids_found) {
 	struct cackey_pcsc_identity *pcsc_identities;
 	struct cackey_identity *identities;
 	unsigned long num_ids, id_idx, curr_id_type;
-	unsigned long num_certs, num_extra_certs, cert_idx;
-	int include_extra_certs = 1;
+	unsigned long num_certs, num_dod_certs, cert_idx;
+	int include_extra_certs = 0;
 
 	CACKEY_DEBUG_PRINTF("Called.");
-
-	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
-		CACKEY_DEBUG_PRINTF("Asked not to include extra (DoD) certificates");
-
-		include_extra_certs = 0;
-	}
-
-	if (include_extra_certs) {
-		num_extra_certs = sizeof(extra_certs) / sizeof(extra_certs[0]);
-
-		CACKEY_DEBUG_PRINTF("Including %li DoD Certificates as objects on this token", num_extra_certs);
-	} else {
-		num_extra_certs = 0;
-	}
 
 	if (ids_found == NULL) {
 		CACKEY_DEBUG_PRINTF("Error.  ids_found is NULL");
@@ -3430,11 +3448,48 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 		return(NULL);
 	}
 
+#ifdef CACKEY_CARD_SLOT_INCLUDE_EXTRA_CERTS
+	include_extra_certs = 1;
+#endif
+
+	if (getenv("CACKEY_DOD_CERTS_ON_HW_SLOTS") != NULL) {
+		include_extra_certs = 1;
+	}
+
+	if (getenv("CACKEY_NO_DOD_CERTS_ON_HW_SLOTS") != NULL) {
+		include_extra_certs = 0;
+	}
+
+	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
+		num_dod_certs = 0;
+	} else {
+		num_dod_certs = sizeof(extra_certs) / sizeof(extra_certs[0]);
+	}
+
+	if (slot->internal) {
+		num_ids = num_dod_certs;
+
+		if (num_ids != 0) {
+			identities = malloc(num_ids * sizeof(*identities));
+
+			cackey_read_dod_identities(identities, 0, num_dod_certs);
+		} else {
+			identities = NULL;
+		}
+
+		*ids_found = num_ids;
+
+		return(identities);
+	}
+
 	pcsc_identities = cackey_read_certs(slot, NULL, &num_certs);
 	if (pcsc_identities != NULL) {
 		/* Convert number of Certs to number of objects */
 		num_ids = (CKO_PRIVATE_KEY - CKO_CERTIFICATE + 1) * num_certs;
-		num_ids += num_extra_certs * 3;
+
+		if (include_extra_certs) {
+			num_ids += num_dod_certs;
+		}
 
 		identities = malloc(num_ids * sizeof(*identities));
 
@@ -3454,26 +3509,19 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 			}
 		}
 
-		cackey_free_certs(pcsc_identities, num_certs, 1);
+		if (include_extra_certs) {
+			CACKEY_DEBUG_PRINTF("Including DoD Certificates on hardware slot");
 
-		/* Add DoD Certificates and Netscape Trust Objects */
-		for (cert_idx = 0; cert_idx < num_extra_certs; cert_idx++) {
-			identities[id_idx].pcsc_identity = NULL;
-			identities[id_idx].attributes = cackey_get_attributes(CKO_CERTIFICATE, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
-			id_idx++;
-
-			identities[id_idx].pcsc_identity = NULL;
-			identities[id_idx].attributes = cackey_get_attributes(CKO_PUBLIC_KEY, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
-			id_idx++;
-
-			identities[id_idx].pcsc_identity = NULL;
-			identities[id_idx].attributes = cackey_get_attributes(CKO_NETSCAPE_TRUST, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
-			id_idx++;
+			cackey_read_dod_identities(identities, id_idx, num_dod_certs);
 		}
 
+		cackey_free_certs(pcsc_identities, num_certs, 1);
+
 		*ids_found = num_ids;
+
 		return(identities);
 	}
+
 
 	*ids_found = 0;
 	return(NULL);
@@ -3481,7 +3529,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 
 CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 	CK_C_INITIALIZE_ARGS CK_PTR args;
-	uint32_t idx;
+	uint32_t idx, highest_slot;
 	int mutex_init_ret;
 
 	CACKEY_DEBUG_PRINTF("Called.");
@@ -3523,6 +3571,21 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 		cackey_slots[idx].slot_reset = 0;
 		cackey_slots[idx].token_flags = 0;
 		cackey_slots[idx].label = NULL;
+		cackey_slots[idx].internal = 0;
+	}
+
+	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
+		CACKEY_DEBUG_PRINTF("Asked not to include DoD certificates");
+	} else {
+		highest_slot = (sizeof(cackey_slots) / sizeof(cackey_slots[0])) - 1;
+
+		CACKEY_DEBUG_PRINTF("Including DoD certs in slot %lu", (unsigned long) highest_slot);
+
+		cackey_slots[highest_slot].active = 1;
+		cackey_slots[highest_slot].internal = 1;
+		cackey_slots[highest_slot].label = (unsigned char *) "DoD Certificates";
+		cackey_slots[highest_slot].pcsc_reader = "CACKey";
+		cackey_slots[highest_slot].token_flags = 0;
 	}
 
 	cackey_initialized = 1;
@@ -3570,6 +3633,10 @@ CK_DEFINE_FUNCTION(CK_RV, C_Finalize)(CK_VOID_PTR pReserved) {
 	cackey_slots_disconnect_all();
 
 	for (idx = 0; idx < (sizeof(cackey_slots) / sizeof(cackey_slots[0])); idx++) {
+		if (cackey_slots[idx].internal) {
+			continue;
+		}
+
 		if (cackey_slots[idx].pcsc_reader) {
 			free(cackey_slots[idx].pcsc_reader);
 		}
@@ -3627,7 +3694,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetInfo)(CK_INFO_PTR pInfo) {
 CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PTR pulCount) {
 	int mutex_retval;
 	int pcsc_connect_ret;
-	CK_ULONG count, slot_count = 0, currslot;
+	CK_ULONG count, slot_count = 0, currslot, slot_idx;
 	char *pcsc_readers, *pcsc_readers_s, *pcsc_readers_e;
 	DWORD pcsc_readers_len;
 	LONG scard_listreaders_ret;
@@ -3662,6 +3729,10 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 		cackey_slots_disconnect_all();
 
 		for (currslot = 0; currslot < (sizeof(cackey_slots) / sizeof(cackey_slots[0])); currslot++) {
+			if (cackey_slots[currslot].internal) {
+				continue;
+			}
+
 			if (cackey_slots[currslot].pcsc_reader) {
 				free(cackey_slots[currslot].pcsc_reader);
 
@@ -3710,7 +3781,15 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 				/* Start with Slot ID 1, to avoid a bug in GDM on RHEL */
 				/* Bug 594911: https://bugzilla.redhat.com/show_bug.cgi?id=594911 */
 				currslot = 1;
+				slot_count = 0;
 				while (pcsc_readers < pcsc_readers_e) {
+					/* Find next available slot */
+					for (; currslot < (sizeof(cackey_slots) / sizeof(cackey_slots[0])); currslot++) {
+						if (!cackey_slots[currslot].active) {
+							break;
+						}
+					}
+
 					curr_reader_len = strlen(pcsc_readers);
 
 					if ((pcsc_readers + curr_reader_len) > pcsc_readers_e) {
@@ -3732,6 +3811,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 					/* Only update the list of slots if we are actually being asked supply the slot information */
 					if (pSlotList) {
 						cackey_slots[currslot].active = 1;
+						cackey_slots[currslot].internal = 0;
 						cackey_slots[currslot].pcsc_reader = strdup(pcsc_readers);
 						cackey_slots[currslot].pcsc_card_connected = 0;
 						cackey_slots[currslot].transaction_depth = 0;
@@ -3741,18 +3821,21 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 						cackey_slots[currslot].label = NULL;
 
 						cackey_mark_slot_reset(&cackey_slots[currslot]);
+					} else {
+						/* Artificially increase the number of active slots by what will become active */
+						slot_count++;
 					}
 					currslot++;
 
 					pcsc_readers += curr_reader_len + 1;
 				}
 
-				/* Start with Slot ID 1, to avoid a bug in GDM on RHEL */
-				/* Bug 594911: https://bugzilla.redhat.com/show_bug.cgi?id=594911 */
-				if (currslot > 1) {
-					/* Start with Slot ID 1, to avoid a bug in GDM on RHEL */
-					/* Bug 594911: https://bugzilla.redhat.com/show_bug.cgi?id=594911 */
-					slot_count = currslot - 1;
+				for (currslot = 0; currslot < (sizeof(cackey_slots) / sizeof(cackey_slots[0])); currslot++) {
+					if (cackey_slots[currslot].active) {
+						CACKEY_DEBUG_PRINTF("Found active slot %lu", (unsigned long) currslot);
+
+						slot_count++;
+					}
 				}
 			} else {
 				CACKEY_DEBUG_PRINTF("Second call to SCardListReaders failed, return %s/%li", CACKEY_DEBUG_FUNC_SCARDERR_TO_STR(scard_listreaders_ret), (long) scard_listreaders_ret);
@@ -3783,13 +3866,39 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 	if (count < slot_count) {
 		CACKEY_DEBUG_PRINTF("Error. User allocated %lu entries, but we have %lu entries.", count, slot_count);
 
+		CACKEY_DEBUG_PRINTF("Returning CKR_BUFFER_TOO_SMALL");
+
 		return(CKR_BUFFER_TOO_SMALL);	
 	}
 
-	for (currslot = 0; currslot < slot_count; currslot++) {
-		/* Start with Slot ID 1, to avoid a bug in GDM on RHEL */
-		/* Bug 594911: https://bugzilla.redhat.com/show_bug.cgi?id=594911 */
-		pSlotList[currslot] = currslot + 1;
+	mutex_retval = cackey_mutex_lock(cackey_biglock);
+	if (mutex_retval != 0) {
+		CACKEY_DEBUG_PRINTF("Error.  Locking failed.");
+
+		return(CKR_GENERAL_ERROR);
+	}
+
+	slot_idx = 0;
+	for (currslot = 0; (currslot < (sizeof(cackey_slots) / sizeof(cackey_slots[0]))); currslot++) {
+		if (!cackey_slots[currslot].active) {
+			continue;
+		}
+
+		if (slot_idx >= count) {
+			CACKEY_DEBUG_PRINTF("Error. User allocated %lu entries, but we just tried to write to the %lu index -- ignoring", count, slot_idx);
+
+			continue;
+		}
+
+		pSlotList[slot_idx] = currslot;
+		slot_idx++;
+	}
+
+	mutex_retval = cackey_mutex_unlock(cackey_biglock);
+	if (mutex_retval != 0) {
+		CACKEY_DEBUG_PRINTF("Error.  Unlocking failed.");
+
+		return(CKR_GENERAL_ERROR);
 	}
 
 	*pulCount = slot_count;
@@ -3841,7 +3950,11 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotInfo)(CK_SLOT_ID slotID, CK_SLOT_INFO_PTR pIn
 		return(CKR_SLOT_ID_INVALID);
 	}
 
-	pInfo->flags = CKF_REMOVABLE_DEVICE | CKF_HW_SLOT;
+	pInfo->flags = CKF_HW_SLOT;
+
+	if (!cackey_slots[slotID].internal) {
+		pInfo->flags |= CKF_REMOVABLE_DEVICE;
+	}
 
 	if (cackey_token_present(&cackey_slots[slotID]) == CACKEY_PCSC_S_TOKENPRESENT) {
 		pInfo->flags |= CKF_TOKEN_PRESENT;
