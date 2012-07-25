@@ -139,6 +139,26 @@ sltoml() {
 	pkgbuild
 }
 
+# Build function for Snow Leopard/Lion/Mountain Lion
+sltoml() {
+	makedir
+	HEADERS=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/Versions/A/Headers/
+	LIBRARY=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/PCSC
+	LIB=""
+	ARCHLIST=""
+	DLIB=""
+	DARCHLIST=""
+	OSX=Sltoml
+	PKTARGETOS=3
+	NEXTOSXVER=10.9
+	CUROSXVER=10.6
+	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
+		genbuild
+	done
+	libbuild
+	pkgbuild
+}
+
 # Generic build function
 genbuild() {
 	make distclean
