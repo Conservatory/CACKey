@@ -3416,6 +3416,10 @@ static void cackey_free_identities(struct cackey_identity *identities, unsigned 
 static unsigned long cackey_read_dod_identities(struct cackey_identity *identities, unsigned long num_dod_certs) {
 	unsigned long cert_idx, id_idx = 0;
 
+	if (identities == NULL) {
+		return(num_dod_certs * 3);
+	}
+
 	for (cert_idx = 0; cert_idx < num_dod_certs; cert_idx++) {
 		identities[id_idx].pcsc_identity = NULL;
 		identities[id_idx].attributes = cackey_get_attributes(CKO_CERTIFICATE, &extra_certs[cert_idx], 0xf000 | cert_idx, &identities[id_idx].attributes_count);
@@ -3467,7 +3471,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 	}
 
 	if (slot->internal) {
-		num_ids = num_dod_certs * 3;
+		num_ids = cackey_read_dod_identities(NULL, num_dod_certs);
 
 		if (num_ids != 0) {
 			identities = malloc(num_ids * sizeof(*identities));
@@ -3488,7 +3492,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 		num_ids = (CKO_PRIVATE_KEY - CKO_CERTIFICATE + 1) * num_certs;
 
 		if (include_extra_certs) {
-			num_ids += num_dod_certs * 3;
+			num_ids += cackey_read_dod_identities(NULL, num_dod_certs);
 		}
 
 		identities = malloc(num_ids * sizeof(*identities));
