@@ -2607,7 +2607,7 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
  */
 static cackey_ret cackey_token_present(struct cackey_slot *slot) {
 	cackey_ret pcsc_connect_ret;
-	DWORD reader_len, state, protocol, atr_len;
+	DWORD reader_len = 0, state = 0, protocol = 0, atr_len;
 	BYTE atr[MAX_ATR_SIZE];
 	LONG status_ret, scard_reconn_ret;
 
