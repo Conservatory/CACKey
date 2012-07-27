@@ -1,4 +1,4 @@
-AC_INIT(cackey, 0.6.7) 
+AC_INIT(cackey, 0.6.8) 
 AC_CONFIG_HEADERS(config.h)
 
 dnl Locate standard tools
