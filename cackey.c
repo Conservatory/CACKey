@@ -3413,8 +3413,8 @@ static void cackey_free_identities(struct cackey_identity *identities, unsigned 
 	free(identities);
 }
 
-static unsigned long cackey_read_dod_identities(struct cackey_identity *identities, unsigned long id_idx, unsigned long num_dod_certs) {
-	unsigned long cert_idx;
+static unsigned long cackey_read_dod_identities(struct cackey_identity *identities, unsigned long num_dod_certs) {
+	unsigned long cert_idx, id_idx = 0;
 
 	for (cert_idx = 0; cert_idx < num_dod_certs; cert_idx++) {
 		identities[id_idx].pcsc_identity = NULL;
@@ -3472,7 +3472,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 		if (num_ids != 0) {
 			identities = malloc(num_ids * sizeof(*identities));
 
-			cackey_read_dod_identities(identities, 0, num_dod_certs);
+			cackey_read_dod_identities(identities, num_dod_certs);
 		} else {
 			identities = NULL;
 		}
@@ -3512,7 +3512,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 		if (include_extra_certs) {
 			CACKEY_DEBUG_PRINTF("Including DoD Certificates on hardware slot");
 
-			cackey_read_dod_identities(identities, id_idx, num_dod_certs);
+			cackey_read_dod_identities(identities + id_idx, num_dod_certs);
 		}
 
 		cackey_free_certs(pcsc_identities, num_certs, 1);
