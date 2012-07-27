@@ -3467,7 +3467,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 	}
 
 	if (slot->internal) {
-		num_ids = num_dod_certs;
+		num_ids = num_dod_certs * 3;
 
 		if (num_ids != 0) {
 			identities = malloc(num_ids * sizeof(*identities));
@@ -3488,7 +3488,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 		num_ids = (CKO_PRIVATE_KEY - CKO_CERTIFICATE + 1) * num_certs;
 
 		if (include_extra_certs) {
-			num_ids += num_dod_certs;
+			num_ids += num_dod_certs * 3;
 		}
 
 		identities = malloc(num_ids * sizeof(*identities));
