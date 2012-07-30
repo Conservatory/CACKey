@@ -44,6 +44,9 @@
 #    undef HAVE_LIBZ
 #  endif
 #endif
+#ifdef CACKEY_DEBUG_SEARCH_SPEEDTEST
+#  include <sys/time.h>
+#endif
 
 #define CK_PTR *
 #define CK_DEFINE_FUNCTION(returnType, name) returnType name
@@ -730,6 +733,9 @@ struct cackey_slot {
 	unsigned char *label;
 
 	DWORD protocol;
+
+	unsigned int cached_certs_count;
+	struct cackey_pcsc_identity *cached_certs;
 };
 
 typedef enum {
@@ -2087,6 +2093,30 @@ static void cackey_free_certs(struct cackey_pcsc_identity *start, size_t count, 
 	return;
 }
 
+static struct cackey_pcsc_identity *cackey_copy_certs(struct cackey_pcsc_identity *dest, struct cackey_pcsc_identity *start, size_t count) {
+	size_t idx;
+
+	if (start == NULL) {
+		return(NULL);
+	}
+
+	if (dest == NULL) {
+		dest = malloc(sizeof(*dest) * count);
+	}
+
+	for (idx = 0; idx < count; idx++) {
+		memcpy(dest[idx].applet, start[idx].applet, sizeof(dest[idx].applet));
+		dest[idx].file = start[idx].file;
+		dest[idx].certificate_len = start[idx].certificate_len;
+		dest[idx].keysize = start[idx].keysize;
+
+		dest[idx].certificate = malloc(dest[idx].certificate_len);
+		memcpy(dest[idx].certificate, start[idx].certificate, dest[idx].certificate_len);
+	}
+
+	return(dest);
+}
+
 /*
  * SYNPOSIS
  *     ...
@@ -2125,6 +2155,30 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 
 			return(certs);
 		}
+	}
+
+	if (!slot->slot_reset) {
+		if (slot->cached_certs) {
+			if (certs == NULL) {
+				certs = malloc(sizeof(*certs) * slot->cached_certs_count);
+				*count = slot->cached_certs_count;
+
+			} else {
+				if (*count > slot->cached_certs_count) {
+					*count = slot->cached_certs_count;
+				}
+			}
+
+			cackey_copy_certs(certs, slot->cached_certs, *count);
+
+			return(certs);
+		}
+	}
+
+	if (slot->cached_certs) {
+		cackey_free_certs(slot->cached_certs, slot->cached_certs_count, 1);
+
+		slot->cached_certs = NULL;
 	}
 
 	/* Begin a SmartCard transaction */
@@ -2247,6 +2301,9 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 	if (certs_resizable) {
 		certs = realloc(certs, sizeof(*certs) * (*count));
 	}
+
+	slot->cached_certs = cackey_copy_certs(NULL, certs, *count);
+	slot->cached_certs_count = *count;
 
 	/* Terminate SmartCard Transaction */
 	cackey_end_transaction(slot);
@@ -2413,7 +2470,6 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 				CACKEY_DEBUG_PRINTF("Token absent.  Returning TOKENABSENT");
 
 				cackey_mark_slot_reset(slot);
-				slot->token_flags = CKF_LOGIN_REQUIRED;
 
 				return(CACKEY_PCSC_E_TOKENABSENT);
 			}
@@ -3644,6 +3700,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_Finalize)(CK_VOID_PTR pReserved) {
 		if (cackey_slots[idx].pcsc_reader) {
 			free(cackey_slots[idx].pcsc_reader);
 		}
+
+		if (cackey_slots[idx].cached_certs) {
+			cackey_free_certs(cackey_slots[idx].cached_certs, cackey_slots[idx].cached_certs_count, 1);
+
+			cackey_slots[idx].cached_certs = NULL;
+		}
 	}
 
 	cackey_pcsc_disconnect();
@@ -3696,6 +3758,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetInfo)(CK_INFO_PTR pInfo) {
  * Process list of readers, and create mapping between reader name and slot ID
  */
 CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PTR pulCount) {
+	static int first_call = 1;
 	int mutex_retval;
 	int pcsc_connect_ret;
 	CK_ULONG count, slot_count = 0, currslot, slot_idx;
@@ -3703,6 +3766,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 	DWORD pcsc_readers_len;
 	LONG scard_listreaders_ret;
 	size_t curr_reader_len;
+	int slot_reset;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -3726,30 +3790,58 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 	}
 
 	/* Clear list of slots */
+	slot_reset = 0;
 	if (pSlotList) {
-		CACKEY_DEBUG_PRINTF("Purging all slot information.");
+		if (first_call) {
+			first_call = 0;
 
-		/* Only update the list of slots if we are actually being supply the slot information */
-		cackey_slots_disconnect_all();
+			slot_reset = 1;
+		}
 
+		/* If any of the slots have been reset then purge all information and check again */
 		for (currslot = 0; currslot < (sizeof(cackey_slots) / sizeof(cackey_slots[0])); currslot++) {
 			if (cackey_slots[currslot].internal) {
 				continue;
 			}
 
-			if (cackey_slots[currslot].pcsc_reader) {
-				free(cackey_slots[currslot].pcsc_reader);
-
-				cackey_slots[currslot].pcsc_reader = NULL;
+			if (!cackey_slots[currslot].active) {
+				continue;
 			}
 
-			if (cackey_slots[currslot].label) {
-				free(cackey_slots[currslot].label);
+			if (cackey_slots[currslot].slot_reset) {
+				slot_reset = 1;
 
-				cackey_slots[currslot].label = NULL;
+				break;
 			}
+		}
 
-			cackey_slots[currslot].active = 0;
+		if (slot_reset) {
+			CACKEY_DEBUG_PRINTF("Purging all slot information.");
+
+			/* Only update the list of slots if we are actually being supply the slot information */
+			cackey_slots_disconnect_all();
+
+			for (currslot = 0; currslot < (sizeof(cackey_slots) / sizeof(cackey_slots[0])); currslot++) {
+				if (cackey_slots[currslot].internal) {
+					continue;
+				}
+
+				if (cackey_slots[currslot].pcsc_reader) {
+					free(cackey_slots[currslot].pcsc_reader);
+
+					cackey_slots[currslot].pcsc_reader = NULL;
+				}
+
+				if (cackey_slots[currslot].label) {
+					free(cackey_slots[currslot].label);
+
+					cackey_slots[currslot].label = NULL;
+				}
+
+				cackey_slots[currslot].active = 0;
+			}
+		} else {
+			
 		}
 	}
 
@@ -3814,17 +3906,18 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 
 					/* Only update the list of slots if we are actually being asked supply the slot information */
 					if (pSlotList) {
-						cackey_slots[currslot].active = 1;
-						cackey_slots[currslot].internal = 0;
-						cackey_slots[currslot].pcsc_reader = strdup(pcsc_readers);
-						cackey_slots[currslot].pcsc_card_connected = 0;
-						cackey_slots[currslot].transaction_depth = 0;
-						cackey_slots[currslot].transaction_need_hw_lock = 0;
-						cackey_slots[currslot].slot_reset = 1;
-						cackey_slots[currslot].token_flags = CKF_LOGIN_REQUIRED;
-						cackey_slots[currslot].label = NULL;
+						if (slot_reset) {
+							cackey_slots[currslot].active = 1;
+							cackey_slots[currslot].internal = 0;
+							cackey_slots[currslot].pcsc_reader = strdup(pcsc_readers);
+							cackey_slots[currslot].pcsc_card_connected = 0;
+							cackey_slots[currslot].transaction_depth = 0;
+							cackey_slots[currslot].transaction_need_hw_lock = 0;
+							cackey_slots[currslot].token_flags = CKF_LOGIN_REQUIRED;
+							cackey_slots[currslot].label = NULL;
 
-						cackey_mark_slot_reset(&cackey_slots[currslot]);
+							cackey_mark_slot_reset(&cackey_slots[currslot]);
+						}
 					} else {
 						/* Artificially increase the number of active slots by what will become active */
 						slot_count++;
@@ -5124,6 +5217,10 @@ CK_DEFINE_FUNCTION(CK_RV, C_FindObjects)(CK_SESSION_HANDLE hSession, CK_OBJECT_H
 	CK_ULONG curr_id_idx, curr_out_id_idx, curr_attr_idx, sess_attr_idx;
 	CK_ULONG matched_count, prev_matched_count;
 	int mutex_retval;
+#ifdef CACKEY_DEBUG_SEARCH_SPEEDTEST
+	struct timeval start, end;
+	uint64_t start_int, end_int;
+#endif
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -5189,6 +5286,10 @@ CK_DEFINE_FUNCTION(CK_RV, C_FindObjects)(CK_SESSION_HANDLE hSession, CK_OBJECT_H
 		return(CKR_OPERATION_NOT_INITIALIZED);
 	}
 
+#ifdef CACKEY_DEBUG_SEARCH_SPEEDTEST
+	gettimeofday(&start, NULL);
+#endif
+
 	curr_out_id_idx = 0;
 	for (curr_id_idx = cackey_sessions[hSession].search_curr_id; curr_id_idx < cackey_sessions[hSession].identities_count && ulMaxObjectCount; curr_id_idx++) {
 		curr_id = &cackey_sessions[hSession].identities[curr_id_idx];
@@ -5233,6 +5334,13 @@ CK_DEFINE_FUNCTION(CK_RV, C_FindObjects)(CK_SESSION_HANDLE hSession, CK_OBJECT_H
 	}
 	cackey_sessions[hSession].search_curr_id = curr_id_idx;
 	*pulObjectCount = curr_out_id_idx;
+
+#ifdef CACKEY_DEBUG_SEARCH_SPEEDTEST
+	gettimeofday(&end, NULL);
+	start_int = (start.tv_sec * 1000000) + start.tv_usec;
+	end_int = (end.tv_sec * 1000000) + end.tv_usec;
+	fprintf(stderr, "Search took %lu microseconds\n", (unsigned long) (end_int - start_int));
+#endif
 
 	mutex_retval = cackey_mutex_unlock(cackey_biglock);
 	if (mutex_retval != 0) {
