@@ -1410,10 +1410,14 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 	/* Determine which protocol to send using */
 	switch (slot->protocol) {
 		case SCARD_PROTOCOL_T0:
+			CACKEY_DEBUG_PRINTF("Protocol to send datagram is T=0");
+
 			pioSendPci = SCARD_PCI_T0;
 
 			break;
 		case SCARD_PROTOCOL_T1:
+			CACKEY_DEBUG_PRINTF("Protocol to send datagram is T=1");
+
 			pioSendPci = SCARD_PCI_T1;
 
 			break;
@@ -1430,7 +1434,9 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 	xmit_buf[xmit_len++] = p1;
 	xmit_buf[xmit_len++] = p2;
 	if (data) {
-		if (lc > 256) {
+		if (lc > 255) {
+			CACKEY_DEBUG_PRINTF("CAUTION!  Using an Lc greater than 255 is untested.  Lc = %u", lc);
+
 			xmit_buf[xmit_len++] = 0x80; /* XXX UNTESTED */
 			xmit_buf[xmit_len++] = (lc & 0xff00) >> 8;
 			xmit_buf[xmit_len++] = lc & 0xff;
@@ -1444,6 +1450,8 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 
 	if (le != 0x00) {
 		if (le > 256) {
+			CACKEY_DEBUG_PRINTF("CAUTION!  Using an Le greater than 256 is untested.  Le = %u", le);
+
 			xmit_buf[xmit_len++] = 0x80; /* XXX UNTESTED */
 			xmit_buf[xmit_len++] = (le & 0xff00) >> 8;
 			xmit_buf[xmit_len++] = le & 0xff;
@@ -1698,7 +1706,7 @@ static ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, 
 	cmd[3] = oid[1];
 	cmd[4] = oid[2];
 
-	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, NISTSP800_73_3_INSTR_GET_DATA, 0x3F, 0xFF, sizeof(cmd), cmd, count, &respcode, buffer, &count);
+	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, NISTSP800_73_3_INSTR_GET_DATA, 0x3F, 0xFF, sizeof(cmd), cmd, 256, &respcode, buffer, &count);
 
 	if (send_ret == CACKEY_PCSC_E_RETRY) {
 		CACKEY_DEBUG_PRINTF("ADPU Sending failed, retrying read buffer");
