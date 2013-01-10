@@ -2373,7 +2373,7 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 		/* Try PIV application */
 		send_ret = cackey_select_applet(slot, piv_aid, sizeof(piv_aid));
 		if (send_ret == CACKEY_PCSC_S_OK) {
-			CACKEY_DEBUG_PRINTF("We have a PIV card, doing the needful");
+			CACKEY_DEBUG_PRINTF("We have a PIV card -- not using the CCC, pulling pre-selected keys");
 
 			piv = 1;
 		} else {
