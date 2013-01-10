@@ -156,6 +156,9 @@
 #define GSCIS_TAG_SECURITY_CODE       0x57
 #define GSCIS_TAG_CARDID_AID          0x58
 
+/*** PIV Codes ***/
+#define NISTSP800_73_3_INSTR_GET_DATA 0xCB
+
 /*** PKI Information - EF 7000 ***/
 #define GSCIS_TAG_CERTIFICATE         0x70
 #define GSCIS_TAG_CERT_ISSUE_DATE     0x71
@@ -163,6 +166,24 @@
 
 /** Applet IDs **/
 #define GSCIS_AID_CCC                 0xA0, 0x00, 0x00, 0x01, 0x16, 0xDB, 0x00
+#define NISTSP800_73_3_PIV_AID        0xA0, 0x00, 0x00, 0x03, 0x08, 0x00, 0x00, 0x10, 0x00, 0x01, 0x00
+
+/* PIV IDs */
+/** Key Identifiers (NIST SP 800-78-3, Table 6-1 **/
+#define NISTSP800_78_3_KEY_PIVAUTH   0x9A
+#define NISTSP800_78_3_KEY_SIGNATURE 0x9C
+#define NISTSP800_78_3_KEY_KEYMGT    0x9D
+#define NISTSP800_78_3_KEY_CARDAUTH  0x9E
+
+/** Algorithm Identifiers (NIST SP 800-78-3, Table 6-2 **/
+#define NISTSP800_78_3_ALGO_RSA1024  0x06
+#define NISTSP800_78_3_ALGO_RSA2048  0x07
+
+/** Object Identifiers (NIST SP 800-73-3 Part 1, Table 2) **/
+#define NISTSP800_73_3_OID_PIVAUTH   0x5F, 0xC1, 0x05
+#define NISTSP800_73_3_OID_SIGNATURE 0x5F, 0xC1, 0x0A
+#define NISTSP800_73_3_OID_KEYMGT    0x5F, 0xC1, 0x0B
+#define NISTSP800_73_3_OID_CARDAUTH  0x5F, 0xC1, 0x01
 
 /* Maximum size of data portion of APDUs */
 /** Do not set this above 250 **/
@@ -1421,7 +1442,7 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 	/* Begin Smartcard Transaction */
 	cackey_begin_transaction(slot);
 
-	if (class == GSCIS_CLASS_ISO7816 && instruction == GSCIS_INSTR_VERIFY && p1 == 0x00 && p2 == 0x00) {
+	if (class == GSCIS_CLASS_ISO7816 && instruction == GSCIS_INSTR_VERIFY && p1 == 0x00) {
 		CACKEY_DEBUG_PRINTF("Sending APDU: <<censored>>");
 	} else {
 		CACKEY_DEBUG_PRINTBUF("Sending APDU:", xmit_buf, xmit_len);
@@ -1614,6 +1635,135 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 	CACKEY_DEBUG_PRINTF("APDU Returned an error, returning in failure");
 
 	return(CACKEY_PCSC_E_GENERIC);
+}
+
+/*
+ * SYNPOSIS
+ *     ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, size_t count, ....
+ *
+ * ARGUMENTS
+ *     struct cackey_slot *slot
+ *         Slot to send commands to
+ *
+ *     unsigned char *buffer
+ *         [OUT] Buffer
+ *
+ *     size_t count
+ *         Number of bytes to attempt to read
+ *
+ *     size_t initial_offset
+ *         Specify the offset to begin the read from
+ *
+ *
+ * RETURN VALUE
+ *     This function returns the number of bytes actually read, or -1 on error.
+ *
+ * NOTES
+ *     None
+ *
+ */
+static ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, size_t count, unsigned char oid[3]) {
+	unsigned char *buffer_p;
+	size_t init_count;
+
+	size_t offset = 0, max_offset, max_count, size;
+	unsigned char cmd[] = {0x5C, 0x03, 0x00, 0x00, 0x00};
+	uint16_t respcode;
+	int send_ret;
+	int idx;
+
+	CACKEY_DEBUG_PRINTF("Called.");
+
+	init_count = count;
+
+	max_offset = count;
+	max_count = CACKEY_APDU_MTU;
+
+	cmd[2] = oid[0];
+	cmd[3] = oid[1];
+	cmd[4] = oid[2];
+
+	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, NISTSP800_73_3_INSTR_GET_DATA, 0x3F, 0xFF, sizeof(cmd), cmd, count, &respcode, buffer, &count);
+
+	if (send_ret == CACKEY_PCSC_E_RETRY) {
+		CACKEY_DEBUG_PRINTF("ADPU Sending failed, retrying read buffer");
+
+		return(cackey_get_data(slot, buffer, init_count, oid));
+	}
+
+	if (send_ret != CACKEY_PCSC_S_OK) {
+		if (respcode == 0x6A86) {
+/* XXX TODO PIV */
+		}
+
+		CACKEY_DEBUG_PRINTF("cackey_send_apdu() failed, returning in failure");
+
+		return(-1);
+	}
+
+	offset += count;
+
+#ifdef CACKEY_PARANOID
+#  ifdef _POSIX_SSIZE_MAX
+	if (offset > _POSIX_SSIZE_MAX) {
+		CACKEY_DEBUG_PRINTF("Offset exceeds maximum value, returning in failure. (max = %li, offset = %lu)", (long) _POSIX_SSIZE_MAX, (unsigned long) offset);
+
+		return(-1);
+	}
+#  endif
+#endif
+
+	if (offset < 2) {
+		CACKEY_DEBUG_PRINTF("APDU GET DATA returned %lu bytes, which is too short for a BER-TLV response", (unsigned long) offset);
+
+		return(-1);
+	}
+
+	buffer_p = buffer;
+	if (*buffer_p != 0x53) {
+		CACKEY_DEBUG_PRINTF("APDU GET DATA did not return a BER-TLV with tag 53.  Tag = %02x", (unsigned int) *buffer_p);
+
+		return(-1);
+	}
+	buffer_p++;
+
+	if ((*buffer_p & 0x80) == 0x80) {
+		size = 0;
+		idx = (*buffer_p & 0x7f);
+
+		if (((buffer_p - buffer) + idx) >= offset) {
+			CACKEY_DEBUG_PRINTF("Malformed BER value -- not enough bytes available to read length");
+
+			return(-1);
+		}
+
+		for (; idx > 0; idx--) {
+			buffer_p++;
+			size <<= 8;
+			size |= *buffer_p;
+		}
+	} else {
+		size = *buffer_p;
+	}
+	buffer_p++;
+
+	if (((buffer_p - buffer) + size) != offset) {
+		CACKEY_DEBUG_PRINTF("Entire buffer is not consumed!");
+
+		if (((buffer_p - buffer) + size) > offset) {
+			CACKEY_DEBUG_PRINTF("Encoded size is greater than the amount of data read, dropping");
+
+			return(-1);
+		}
+	}
+
+	memmove(buffer, buffer_p, size);
+
+	CACKEY_DEBUG_PRINTBUF("GET DATA result", buffer, size);
+
+	CACKEY_DEBUG_PRINTF("Returning in success, read %lu bytes", (unsigned long) size);
+
+	return(size);
 }
 
 /*
@@ -2134,12 +2284,16 @@ static struct cackey_pcsc_identity *cackey_copy_certs(struct cackey_pcsc_identit
 static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, struct cackey_pcsc_identity *certs, unsigned long *count) {
 	struct cackey_pcsc_identity *curr_id;
 	struct cackey_tlv_entity *ccc_tlv, *ccc_curr, *app_tlv, *app_curr;
-	unsigned char ccc_aid[] = {GSCIS_AID_CCC};
+	unsigned char ccc_aid[] = {GSCIS_AID_CCC}, piv_aid[] = {NISTSP800_73_3_PIV_AID};
+	unsigned char piv_oid_pivauth[] = {NISTSP800_73_3_OID_PIVAUTH};
 	unsigned char curr_aid[7];
+	unsigned char buffer[8192];
 	unsigned long outidx = 0;
 	cackey_ret transaction_ret;
+	ssize_t read_ret;
 	int certs_resizable;
 	int send_ret, select_ret;
+	int piv = 0;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -2200,101 +2354,125 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 	/* Select the CCC Applet */
 	send_ret = cackey_select_applet(slot, ccc_aid, sizeof(ccc_aid));
 	if (send_ret != CACKEY_PCSC_S_OK) {
-		CACKEY_DEBUG_PRINTF("Unable to select CCC Applet, returning in failure");
+		/* Try PIV application */
+		send_ret = cackey_select_applet(slot, piv_aid, sizeof(piv_aid));
+		if (send_ret == CACKEY_PCSC_S_OK) {
+			CACKEY_DEBUG_PRINTF("We have a PIV card, doing the needful");
 
-		/* Terminate SmartCard Transaction */
-		cackey_end_transaction(slot);
+			piv = 1;
+		} else {
 
-		return(NULL);
+			CACKEY_DEBUG_PRINTF("Unable to select CCC Applet, returning in failure");
+
+			/* Terminate SmartCard Transaction */
+			cackey_end_transaction(slot);
+
+			return(NULL);
+		}
 	}
 
-	/* Read all the applets from the CCC's TLV */
-	ccc_tlv = cackey_read_tlv(slot);
+	if (piv) {
+		read_ret = cackey_get_data(slot, buffer, sizeof(buffer), piv_oid_pivauth);
 
-	/* Look for CARDURLs that coorespond to PKI applets */
-	for (ccc_curr = ccc_tlv; ccc_curr; ccc_curr = ccc_curr->_next) {
-		CACKEY_DEBUG_PRINTF("Found tag: %s ... ", CACKEY_DEBUG_FUNC_TAG_TO_STR(ccc_curr->tag));
+		curr_id = &certs[outidx];
+		outidx++;
 
-		if (ccc_curr->tag != GSCIS_TAG_CARDURL) {
-			CACKEY_DEBUG_PRINTF("  ... skipping it (we only care about CARDURLs)");
+		curr_id->keysize = -1;
+		curr_id->file = 0xFFFF;
+		curr_id->applet[0] = NISTSP800_78_3_KEY_PIVAUTH;
 
-			continue;
-		}
+		curr_id->certificate_len = read_ret;
+		curr_id->certificate = malloc(curr_id->certificate_len);
+		memcpy(curr_id->certificate, buffer + 4, curr_id->certificate_len - 4); /* XXX TODO PIV */
+	} else {
+		/* Read all the applets from the CCC's TLV */
+		ccc_tlv = cackey_read_tlv(slot);
 
-		if ((ccc_curr->value_cardurl->apptype & CACKEY_TLV_APP_PKI) != CACKEY_TLV_APP_PKI) {
-			CACKEY_DEBUG_PRINTF("  ... skipping it (we only care about PKI applets, this applet supports: %s/%02x)", CACKEY_DEBUG_FUNC_APPTYPE_TO_STR(ccc_curr->value_cardurl->apptype), (unsigned int) ccc_curr->value_cardurl->apptype);
+		/* Look for CARDURLs that coorespond to PKI applets */
+		for (ccc_curr = ccc_tlv; ccc_curr; ccc_curr = ccc_curr->_next) {
+			CACKEY_DEBUG_PRINTF("Found tag: %s ... ", CACKEY_DEBUG_FUNC_TAG_TO_STR(ccc_curr->tag));
 
-			continue;
-		}
-
-		CACKEY_DEBUG_PRINTBUF("RID:", ccc_curr->value_cardurl->rid, sizeof(ccc_curr->value_cardurl->rid));
-		CACKEY_DEBUG_PRINTF("AppID = %s/%04lx", CACKEY_DEBUG_FUNC_OBJID_TO_STR(ccc_curr->value_cardurl->appid), (unsigned long) ccc_curr->value_cardurl->appid);
-		CACKEY_DEBUG_PRINTF("ObjectID = %s/%04lx", CACKEY_DEBUG_FUNC_OBJID_TO_STR(ccc_curr->value_cardurl->objectid), (unsigned long) ccc_curr->value_cardurl->objectid);
-
-		memcpy(curr_aid, ccc_curr->value_cardurl->rid, sizeof(ccc_curr->value_cardurl->rid));
-		curr_aid[sizeof(curr_aid) - 2] = (ccc_curr->value_cardurl->appid >> 8) & 0xff;
-		curr_aid[sizeof(curr_aid) - 1] = ccc_curr->value_cardurl->appid & 0xff;
-
-		/* Select found applet ... */
-		select_ret = cackey_select_applet(slot, curr_aid, sizeof(curr_aid));
-		if (select_ret != CACKEY_PCSC_S_OK) {
-			CACKEY_DEBUG_PRINTF("Failed to select applet, skipping processing of this object");
-
-			continue;
-		}
-
-		/* ... and object (file) */
-		select_ret = cackey_select_file(slot, ccc_curr->value_cardurl->objectid);
-		if (select_ret != CACKEY_PCSC_S_OK) {
-			CACKEY_DEBUG_PRINTF("Failed to select file, skipping processing of this object");
-
-			continue;
-		}
-
-		/* Process this file's TLV looking for certificates */
-		app_tlv = cackey_read_tlv(slot);
-
-		for (app_curr = app_tlv; app_curr; app_curr = app_curr->_next) {
-			CACKEY_DEBUG_PRINTF("Found tag: %s", CACKEY_DEBUG_FUNC_TAG_TO_STR(app_curr->tag));
-			if (app_curr->tag != GSCIS_TAG_CERTIFICATE) {
-				CACKEY_DEBUG_PRINTF("  ... skipping it (we only care about CERTIFICATEs)");
+			if (ccc_curr->tag != GSCIS_TAG_CARDURL) {
+				CACKEY_DEBUG_PRINTF("  ... skipping it (we only care about CARDURLs)");
 
 				continue;
 			}
 
-			curr_id = &certs[outidx];
-			outidx++;
+			if ((ccc_curr->value_cardurl->apptype & CACKEY_TLV_APP_PKI) != CACKEY_TLV_APP_PKI) {
+				CACKEY_DEBUG_PRINTF("  ... skipping it (we only care about PKI applets, this applet supports: %s/%02x)", CACKEY_DEBUG_FUNC_APPTYPE_TO_STR(ccc_curr->value_cardurl->apptype), (unsigned int) ccc_curr->value_cardurl->apptype);
 
-			memcpy(curr_id->applet, curr_aid, sizeof(curr_id->applet));
-			curr_id->file = ccc_curr->value_cardurl->objectid;
-			curr_id->keysize = -1;
+				continue;
+			}
 
-			CACKEY_DEBUG_PRINTF("Filling curr_id->applet (%p) with %lu bytes:", curr_id->applet, (unsigned long) sizeof(curr_id->applet));
-			CACKEY_DEBUG_PRINTBUF("VAL:", curr_id->applet, sizeof(curr_id->applet));
+			CACKEY_DEBUG_PRINTBUF("RID:", ccc_curr->value_cardurl->rid, sizeof(ccc_curr->value_cardurl->rid));
+			CACKEY_DEBUG_PRINTF("AppID = %s/%04lx", CACKEY_DEBUG_FUNC_OBJID_TO_STR(ccc_curr->value_cardurl->appid), (unsigned long) ccc_curr->value_cardurl->appid);
+			CACKEY_DEBUG_PRINTF("ObjectID = %s/%04lx", CACKEY_DEBUG_FUNC_OBJID_TO_STR(ccc_curr->value_cardurl->objectid), (unsigned long) ccc_curr->value_cardurl->objectid);
 
-			curr_id->certificate_len = app_curr->length;
+			memcpy(curr_aid, ccc_curr->value_cardurl->rid, sizeof(ccc_curr->value_cardurl->rid));
+			curr_aid[sizeof(curr_aid) - 2] = (ccc_curr->value_cardurl->appid >> 8) & 0xff;
+			curr_aid[sizeof(curr_aid) - 1] = ccc_curr->value_cardurl->appid & 0xff;
 
-			curr_id->certificate = malloc(curr_id->certificate_len);
-			memcpy(curr_id->certificate, app_curr->value, curr_id->certificate_len);
+			/* Select found applet ... */
+			select_ret = cackey_select_applet(slot, curr_aid, sizeof(curr_aid));
+			if (select_ret != CACKEY_PCSC_S_OK) {
+				CACKEY_DEBUG_PRINTF("Failed to select applet, skipping processing of this object");
+
+				continue;
+			}
+
+			/* ... and object (file) */
+			select_ret = cackey_select_file(slot, ccc_curr->value_cardurl->objectid);
+			if (select_ret != CACKEY_PCSC_S_OK) {
+				CACKEY_DEBUG_PRINTF("Failed to select file, skipping processing of this object");
+
+				continue;
+			}
+
+			/* Process this file's TLV looking for certificates */
+			app_tlv = cackey_read_tlv(slot);
+	
+			for (app_curr = app_tlv; app_curr; app_curr = app_curr->_next) {
+				CACKEY_DEBUG_PRINTF("Found tag: %s", CACKEY_DEBUG_FUNC_TAG_TO_STR(app_curr->tag));
+				if (app_curr->tag != GSCIS_TAG_CERTIFICATE) {
+					CACKEY_DEBUG_PRINTF("  ... skipping it (we only care about CERTIFICATEs)");
+
+					continue;
+				}
+
+				curr_id = &certs[outidx];
+				outidx++;
+
+				memcpy(curr_id->applet, curr_aid, sizeof(curr_id->applet));
+				curr_id->file = ccc_curr->value_cardurl->objectid;
+				curr_id->keysize = -1;
+
+				CACKEY_DEBUG_PRINTF("Filling curr_id->applet (%p) with %lu bytes:", curr_id->applet, (unsigned long) sizeof(curr_id->applet));
+				CACKEY_DEBUG_PRINTBUF("VAL:", curr_id->applet, sizeof(curr_id->applet));
+
+				curr_id->certificate_len = app_curr->length;
+
+				curr_id->certificate = malloc(curr_id->certificate_len);
+				memcpy(curr_id->certificate, app_curr->value, curr_id->certificate_len);
+
+				if (outidx >= *count) {
+					if (certs_resizable) {
+						*count *= 2;
+						certs = realloc(certs, sizeof(*certs) * (*count));
+					} else {
+						break;
+					}
+				}
+			}
+
+			cackey_free_tlv(app_tlv);
 
 			if (outidx >= *count) {
-				if (certs_resizable) {
-					*count *= 2;
-					certs = realloc(certs, sizeof(*certs) * (*count));
-				} else {
-					break;
-				}
+				break;
 			}
 		}
 
-		cackey_free_tlv(app_tlv);
-
-		if (outidx >= *count) {
-			break;
-		}
+		cackey_free_tlv(ccc_tlv);
 	}
-
-	cackey_free_tlv(ccc_tlv);
 
 	*count = outidx;
 
@@ -2335,6 +2513,7 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 	size_t tmpbuflen, padlen, tmpoutbuflen;
 	int free_tmpbuf = 0;
 	int le;
+	int piv;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -2423,66 +2602,78 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 	cackey_begin_transaction(slot);
 
 	/* Select correct applet */
-	CACKEY_DEBUG_PRINTF("Selecting applet found at %p ...", identity->pcsc_identity->applet);
-	cackey_select_applet(slot, identity->pcsc_identity->applet, sizeof(identity->pcsc_identity->applet));
+	if (identity->pcsc_identity->file == 0xFFFF) {
+		piv = 1;
+	} else {
+		piv = 0;
+	}
 
-	/* Select correct file */
-	cackey_select_file(slot, identity->pcsc_identity->file);
+	if (piv) {
+		CACKEY_DEBUG_PRINTF("Sign/Decrypt not implemented XXX TODO PIV");
+		cackey_end_transaction(slot);
+		return(-1);
+	} else {
+		CACKEY_DEBUG_PRINTF("Selecting applet found at %p ...", identity->pcsc_identity->applet);
+		cackey_select_applet(slot, identity->pcsc_identity->applet, sizeof(identity->pcsc_identity->applet));
 
-	tmpbuf_s = tmpbuf;
-	outbuf_s = outbuf;
-	while (tmpbuflen) {
-		if (tmpbuflen > 245) {
-			bytes_to_send = 245;
-			p1 = 0x80;
-			le = 0x00;
-		} else {
-			bytes_to_send = tmpbuflen;
-			p1 = 0x00;
-			le = 0x00;
-		}
+		/* Select correct file */
+		cackey_select_file(slot, identity->pcsc_identity->file);
 
-		tmpoutbuflen = outbuflen;
+		tmpbuf_s = tmpbuf;
+		outbuf_s = outbuf;
+		while (tmpbuflen) {
+			if (tmpbuflen > 245) {
+				bytes_to_send = 245;
+				p1 = 0x80;
+				le = 0x00;
+			} else {
+				bytes_to_send = tmpbuflen;
+				p1 = 0x00;
+				le = 0x00;
+			}
 
-		send_ret = cackey_send_apdu(slot, GSCIS_CLASS_GLOBAL_PLATFORM, GSCIS_INSTR_SIGNDECRYPT, p1, 0x00, bytes_to_send, tmpbuf, le, &respcode, outbuf, &tmpoutbuflen);
-		if (send_ret != CACKEY_PCSC_S_OK) {
-			CACKEY_DEBUG_PRINTF("ADPU Sending Failed -- returning in error.");
+			tmpoutbuflen = outbuflen;
 
-			if (free_tmpbuf) {
-				if (tmpbuf_s) {
-					free(tmpbuf_s);
+			send_ret = cackey_send_apdu(slot, GSCIS_CLASS_GLOBAL_PLATFORM, GSCIS_INSTR_SIGNDECRYPT, p1, 0x00, bytes_to_send, tmpbuf, le, &respcode, outbuf, &tmpoutbuflen);
+			if (send_ret != CACKEY_PCSC_S_OK) {
+				CACKEY_DEBUG_PRINTF("ADPU Sending Failed -- returning in error.");
+
+				if (free_tmpbuf) {
+					if (tmpbuf_s) {
+						free(tmpbuf_s);
+					}
 				}
+
+				/* End transaction */
+				cackey_end_transaction(slot);
+
+				if (respcode == 0x6982) {
+					CACKEY_DEBUG_PRINTF("Security status not satisified.  Returning NEEDLOGIN");
+
+					cackey_mark_slot_reset(slot);
+					slot->token_flags = CKF_LOGIN_REQUIRED;
+
+					return(CACKEY_PCSC_E_NEEDLOGIN);
+				}
+
+				if (send_ret == CACKEY_PCSC_E_TOKENABSENT) {
+					CACKEY_DEBUG_PRINTF("Token absent.  Returning TOKENABSENT");
+
+					cackey_mark_slot_reset(slot);
+
+					return(CACKEY_PCSC_E_TOKENABSENT);
+				}
+
+				return(-1);
 			}
 
-			/* End transaction */
-			cackey_end_transaction(slot);
+			tmpbuf += bytes_to_send;
+			tmpbuflen -= bytes_to_send;
 
-			if (respcode == 0x6982) {
-				CACKEY_DEBUG_PRINTF("Security status not satisified.  Returning NEEDLOGIN");
-
-				cackey_mark_slot_reset(slot);
-				slot->token_flags = CKF_LOGIN_REQUIRED;
-
-				return(CACKEY_PCSC_E_NEEDLOGIN);
-			}
-
-			if (send_ret == CACKEY_PCSC_E_TOKENABSENT) {
-				CACKEY_DEBUG_PRINTF("Token absent.  Returning TOKENABSENT");
-
-				cackey_mark_slot_reset(slot);
-
-				return(CACKEY_PCSC_E_TOKENABSENT);
-			}
-
-			return(-1);
+			outbuf += tmpoutbuflen;
+			outbuflen -= tmpoutbuflen;
+			retval += tmpoutbuflen;
 		}
-
-		tmpbuf += bytes_to_send;
-		tmpbuflen -= bytes_to_send;
-
-		outbuf += tmpoutbuflen;
-		outbuflen -= tmpoutbuflen;
-		retval += tmpoutbuflen;
 	}
 
 	if (free_tmpbuf) {
@@ -2605,6 +2796,7 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 	uint16_t response_code;
 	int tries_remaining;
 	int send_ret;
+	int key_reference = 0x00;
 
 	/* Indicate that we do not know about how many tries are remaining */
 	if (tries_remaining_p) {
@@ -2619,7 +2811,13 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 	}
 
 	/* Issue PIN Verify */
-	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, GSCIS_INSTR_VERIFY, 0x00, 0x00, sizeof(cac_pin), cac_pin, 0x00, &response_code, NULL, NULL);
+	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, GSCIS_INSTR_VERIFY, 0x00, key_reference, sizeof(cac_pin), cac_pin, 0x00, &response_code, NULL, NULL);
+	if (send_ret != CACKEY_PCSC_S_OK && response_code == 0x6A88) {
+		key_reference = 0x80;
+
+		send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, GSCIS_INSTR_VERIFY, 0x00, key_reference, sizeof(cac_pin), cac_pin, 0x00, &response_code, NULL, NULL);
+	}
+
 	if (send_ret != CACKEY_PCSC_S_OK) {
 		if ((response_code & 0x63C0) == 0x63C0) {
 			tries_remaining = (response_code & 0xF);
