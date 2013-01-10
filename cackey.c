@@ -158,6 +158,7 @@
 
 /*** PIV Codes ***/
 #define NISTSP800_73_3_INSTR_GET_DATA 0xCB
+#define NISTSP800_73_3_INSTR_GENAUTH  0x87
 
 /*** PKI Information - EF 7000 ***/
 #define GSCIS_TAG_CERTIFICATE         0x70
@@ -1380,7 +1381,7 @@ static cackey_ret cackey_end_transaction(struct cackey_slot *slot) {
  *     goes away.
  *
  */
-static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class, unsigned char instruction, unsigned char p1, unsigned char p2, unsigned char lc, unsigned char *data, unsigned char le, uint16_t *respcode, unsigned char *respdata, size_t *respdata_len) {
+static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class, unsigned char instruction, unsigned char p1, unsigned char p2, unsigned int lc, unsigned char *data, unsigned int le, uint16_t *respcode, unsigned char *respdata, size_t *respdata_len) {
 	uint8_t major_rc, minor_rc;
 	size_t bytes_to_copy, tmp_respdata_len;
 	LPCSCARD_IO_REQUEST pioSendPci;
@@ -1429,14 +1430,28 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 	xmit_buf[xmit_len++] = p1;
 	xmit_buf[xmit_len++] = p2;
 	if (data) {
-		xmit_buf[xmit_len++] = lc;
+		if (lc > 256) {
+			xmit_buf[xmit_len++] = 0x80; /* XXX UNTESTED */
+			xmit_buf[xmit_len++] = (lc & 0xff00) >> 8;
+			xmit_buf[xmit_len++] = lc & 0xff;
+		} else {
+			xmit_buf[xmit_len++] = lc;
+		}
 		for (idx = 0; idx < lc; idx++) {
 			xmit_buf[xmit_len++] = data[idx];
 		}
 	}
 
 	if (le != 0x00) {
-		xmit_buf[xmit_len++] = le;
+		if (le > 256) {
+			xmit_buf[xmit_len++] = 0x80; /* XXX UNTESTED */
+			xmit_buf[xmit_len++] = (le & 0xff00) >> 8;
+			xmit_buf[xmit_len++] = le & 0xff;
+		} else if (le == 256) {
+			xmit_buf[xmit_len++] = 0x00;
+		} else {
+			xmit_buf[xmit_len++] = le;
+		}
 	}
 
 	/* Begin Smartcard Transaction */
@@ -2285,7 +2300,7 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 	struct cackey_pcsc_identity *curr_id;
 	struct cackey_tlv_entity *ccc_tlv, *ccc_curr, *app_tlv, *app_curr;
 	unsigned char ccc_aid[] = {GSCIS_AID_CCC}, piv_aid[] = {NISTSP800_73_3_PIV_AID};
-	unsigned char piv_oid_pivauth[] = {NISTSP800_73_3_OID_PIVAUTH};
+	unsigned char *piv_oid, piv_oid_pivauth[] = {NISTSP800_73_3_OID_PIVAUTH}, piv_oid_signature[] = {NISTSP800_73_3_OID_SIGNATURE}, piv_oid_keymgt[] = {NISTSP800_73_3_OID_KEYMGT};
 	unsigned char curr_aid[7];
 	unsigned char buffer[8192];
 	unsigned long outidx = 0;
@@ -2293,7 +2308,8 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 	ssize_t read_ret;
 	int certs_resizable;
 	int send_ret, select_ret;
-	int piv = 0;
+	int piv_key, piv = 0;
+	int idx;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -2372,18 +2388,41 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 	}
 
 	if (piv) {
-		read_ret = cackey_get_data(slot, buffer, sizeof(buffer), piv_oid_pivauth);
+		for (idx = 0; idx < 3; idx++) {
+			switch (idx) {
+				case 0:
+					piv_oid = piv_oid_pivauth;
+					piv_key = NISTSP800_78_3_KEY_PIVAUTH;
+					break;
+				case 1:
+					piv_oid = piv_oid_signature;
+					piv_key = NISTSP800_78_3_KEY_SIGNATURE;
+					break;
+				case 2:
+					piv_oid = piv_oid_keymgt;
+					piv_key = NISTSP800_78_3_KEY_KEYMGT;
+					break;
+			}
 
-		curr_id = &certs[outidx];
-		outidx++;
+			read_ret = cackey_get_data(slot, buffer, sizeof(buffer), piv_oid);
 
-		curr_id->keysize = -1;
-		curr_id->file = 0xFFFF;
-		curr_id->applet[0] = NISTSP800_78_3_KEY_PIVAUTH;
+			if (read_ret <= 0) {
+				continue;
+			}
 
-		curr_id->certificate_len = read_ret;
-		curr_id->certificate = malloc(curr_id->certificate_len);
-		memcpy(curr_id->certificate, buffer + 4, curr_id->certificate_len - 4); /* XXX TODO PIV */
+			curr_id = &certs[outidx];
+			outidx++;
+
+			curr_id->keysize = -1;
+			curr_id->file = 0xFFFF;
+			curr_id->applet[0] = piv_key;
+
+			curr_id->certificate_len = read_ret;
+			curr_id->certificate = malloc(curr_id->certificate_len);
+			memcpy(curr_id->certificate, buffer + 4, curr_id->certificate_len - 4); /* XXX TODO PIV (-4 header, -5 trailer == why ?) */
+			curr_id->certificate_len -= 4;
+			curr_id->certificate_len -= 5;
+		}
 	} else {
 		/* Read all the applets from the CCC's TLV */
 		ccc_tlv = cackey_read_tlv(slot);
@@ -2504,8 +2543,9 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
  *
  */
 static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identity *identity, unsigned char *buf, size_t buflen, unsigned char *outbuf, size_t outbuflen, int padInput, int unpadOutput) {
+	unsigned char dyn_auth_template[10];
 	unsigned char *tmpbuf, *tmpbuf_s, *outbuf_s;
-	unsigned char bytes_to_send, p1;
+	unsigned char bytes_to_send, p1, class;
 	unsigned char blocktype;
 	cackey_ret send_ret;
 	uint16_t respcode;
@@ -2601,79 +2641,103 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 	/* Begin transaction */
 	cackey_begin_transaction(slot);
 
-	/* Select correct applet */
+	/* Determine type of transaction */
 	if (identity->pcsc_identity->file == 0xFFFF) {
 		piv = 1;
 	} else {
 		piv = 0;
 	}
 
-	if (piv) {
-		CACKEY_DEBUG_PRINTF("Sign/Decrypt not implemented XXX TODO PIV");
-		cackey_end_transaction(slot);
-		return(-1);
-	} else {
+	/* Select correct applet */
+	if (!piv) {
 		CACKEY_DEBUG_PRINTF("Selecting applet found at %p ...", identity->pcsc_identity->applet);
 		cackey_select_applet(slot, identity->pcsc_identity->applet, sizeof(identity->pcsc_identity->applet));
 
 		/* Select correct file */
 		cackey_select_file(slot, identity->pcsc_identity->file);
+	} else {
+		dyn_auth_template[0] = 0x7C;
+		dyn_auth_template[1] = 0x82;
+		dyn_auth_template[2] = ((tmpbuflen + 6) & 0xff00) >> 8;
+		dyn_auth_template[3] = (tmpbuflen + 6) & 0x00ff;
+		dyn_auth_template[4] = 0x82;
+		dyn_auth_template[5] = 0x00;
+		dyn_auth_template[6] = 0x81;
+		dyn_auth_template[7] = 0x82;
+		dyn_auth_template[8] = (tmpbuflen & 0xff00) >> 8;
+		dyn_auth_template[9] = tmpbuflen & 0x00ff;
 
-		tmpbuf_s = tmpbuf;
-		outbuf_s = outbuf;
-		while (tmpbuflen) {
-			if (tmpbuflen > 245) {
-				bytes_to_send = 245;
-				p1 = 0x80;
+		send_ret = cackey_send_apdu(slot, 0x10, NISTSP800_73_3_INSTR_GENAUTH, NISTSP800_78_3_ALGO_RSA2048, identity->pcsc_identity->applet[0], sizeof(dyn_auth_template), dyn_auth_template, 0x00, NULL, NULL, NULL);
+	}
+
+	tmpbuf_s = tmpbuf;
+	outbuf_s = outbuf;
+	while (tmpbuflen) {
+		if (tmpbuflen > 245) {
+			bytes_to_send = 245;
+			if (piv) {
+				class = 0x10;
 				le = 0x00;
 			} else {
-				bytes_to_send = tmpbuflen;
+				p1 = 0x80;
+				le = 0x00;
+			}
+		} else {
+			bytes_to_send = tmpbuflen;
+			if (piv) {
+				class = GSCIS_CLASS_ISO7816;
+				le = 256;
+			} else {
 				p1 = 0x00;
 				le = 0x00;
 			}
+		}
 
-			tmpoutbuflen = outbuflen;
+		tmpoutbuflen = outbuflen;
 
+		if (piv) {
+			send_ret = cackey_send_apdu(slot, class, NISTSP800_73_3_INSTR_GENAUTH, NISTSP800_78_3_ALGO_RSA2048, identity->pcsc_identity->applet[0], bytes_to_send, tmpbuf, le, &respcode, outbuf, &tmpoutbuflen);
+		} else {
 			send_ret = cackey_send_apdu(slot, GSCIS_CLASS_GLOBAL_PLATFORM, GSCIS_INSTR_SIGNDECRYPT, p1, 0x00, bytes_to_send, tmpbuf, le, &respcode, outbuf, &tmpoutbuflen);
-			if (send_ret != CACKEY_PCSC_S_OK) {
-				CACKEY_DEBUG_PRINTF("ADPU Sending Failed -- returning in error.");
+		}
+		if (send_ret != CACKEY_PCSC_S_OK) {
+			CACKEY_DEBUG_PRINTF("ADPU Sending Failed -- returning in error.");
 
-				if (free_tmpbuf) {
-					if (tmpbuf_s) {
-						free(tmpbuf_s);
-					}
+			if (free_tmpbuf) {
+				if (tmpbuf_s) {
+					free(tmpbuf_s);
 				}
-
-				/* End transaction */
-				cackey_end_transaction(slot);
-
-				if (respcode == 0x6982) {
-					CACKEY_DEBUG_PRINTF("Security status not satisified.  Returning NEEDLOGIN");
-
-					cackey_mark_slot_reset(slot);
-					slot->token_flags = CKF_LOGIN_REQUIRED;
-
-					return(CACKEY_PCSC_E_NEEDLOGIN);
-				}
-
-				if (send_ret == CACKEY_PCSC_E_TOKENABSENT) {
-					CACKEY_DEBUG_PRINTF("Token absent.  Returning TOKENABSENT");
-
-					cackey_mark_slot_reset(slot);
-
-					return(CACKEY_PCSC_E_TOKENABSENT);
-				}
-
-				return(-1);
 			}
 
-			tmpbuf += bytes_to_send;
-			tmpbuflen -= bytes_to_send;
+			/* End transaction */
+			cackey_end_transaction(slot);
 
-			outbuf += tmpoutbuflen;
-			outbuflen -= tmpoutbuflen;
-			retval += tmpoutbuflen;
+			if (respcode == 0x6982) {
+				CACKEY_DEBUG_PRINTF("Security status not satisified.  Returning NEEDLOGIN");
+
+				cackey_mark_slot_reset(slot);
+				slot->token_flags = CKF_LOGIN_REQUIRED;
+
+				return(CACKEY_PCSC_E_NEEDLOGIN);
+			}
+
+			if (send_ret == CACKEY_PCSC_E_TOKENABSENT) {
+				CACKEY_DEBUG_PRINTF("Token absent.  Returning TOKENABSENT");
+
+				cackey_mark_slot_reset(slot);
+
+				return(CACKEY_PCSC_E_TOKENABSENT);
+			}
+
+			return(-1);
 		}
+
+		tmpbuf += bytes_to_send;
+		tmpbuflen -= bytes_to_send;
+
+		outbuf += tmpoutbuflen;
+		outbuflen -= tmpoutbuflen;
+		retval += tmpoutbuflen;
 	}
 
 	if (free_tmpbuf) {
@@ -2696,6 +2760,20 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 	}
 #  endif
 #endif
+
+	/* We must remove the "7C" tag to get to the signature */
+	if (piv) {
+		if (outbuf[0] != 0x7C) {
+			CACKEY_DEBUG_PRINTF("Response from PIV for GENERATE AUTHENTICATION was not a 0x7C tag, returning in failure");
+
+
+			return(-1);
+		}
+
+		/* XXX TODO PIV */
+		memmove(outbuf, outbuf + 8, retval - 8);
+		retval -= 8;
+	}
 
 	/* Unpad reply */
 	if (unpadOutput) {
