@@ -3846,7 +3846,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 		}
 
 		if (include_extra_certs) {
-			CACKEY_DEBUG_PRINTF("Including DoD Certificates on hardware slot");
+			CACKEY_DEBUG_PRINTF("Including US Government Certificates on hardware slot");
 
 			cackey_read_dod_identities(identities + id_idx, num_dod_certs);
 		}
@@ -3919,7 +3919,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 
 		cackey_slots[highest_slot].active = 1;
 		cackey_slots[highest_slot].internal = 1;
-		cackey_slots[highest_slot].label = (unsigned char *) "DoD Certificates";
+		cackey_slots[highest_slot].label = (unsigned char *) "US Government Certificates";
 		cackey_slots[highest_slot].pcsc_reader = "CACKey";
 		cackey_slots[highest_slot].token_flags = 0;
 	}
