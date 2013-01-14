@@ -1437,7 +1437,7 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 		if (lc > 255) {
 			CACKEY_DEBUG_PRINTF("CAUTION!  Using an Lc greater than 255 is untested.  Lc = %u", lc);
 
-			xmit_buf[xmit_len++] = 0x80; /* XXX UNTESTED */
+			xmit_buf[xmit_len++] = 0x82; /* XXX UNTESTED */
 			xmit_buf[xmit_len++] = (lc & 0xff00) >> 8;
 			xmit_buf[xmit_len++] = lc & 0xff;
 		} else {
@@ -1452,7 +1452,7 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 		if (le > 256) {
 			CACKEY_DEBUG_PRINTF("CAUTION!  Using an Le greater than 256 is untested.  Le = %u", le);
 
-			xmit_buf[xmit_len++] = 0x80; /* XXX UNTESTED */
+			xmit_buf[xmit_len++] = 0x82; /* XXX UNTESTED */
 			xmit_buf[xmit_len++] = (le & 0xff00) >> 8;
 			xmit_buf[xmit_len++] = le & 0xff;
 		} else if (le == 256) {
@@ -1706,6 +1706,7 @@ static ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, 
 	cmd[3] = oid[1];
 	cmd[4] = oid[2];
 
+	/* 256 to indicate the largest message size -- not clear if this will work with all messages */
 	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, NISTSP800_73_3_INSTR_GET_DATA, 0x3F, 0xFF, sizeof(cmd), cmd, 256, &respcode, buffer, &count);
 
 	if (send_ret == CACKEY_PCSC_E_RETRY) {
