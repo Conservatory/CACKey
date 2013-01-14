@@ -1662,7 +1662,7 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 
 /*
  * SYNPOSIS
- *     ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, size_t count, ....
+ *     ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, size_t count, unsigned char oid[3]);
  *
  * ARGUMENTS
  *     struct cackey_slot *slot
@@ -1674,8 +1674,8 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
  *     size_t count
  *         Number of bytes to attempt to read
  *
- *     size_t initial_offset
- *         Specify the offset to begin the read from
+ *     unsigned char oid[3]
+ *         3-byte OID to read
  *
  *
  * RETURN VALUE
