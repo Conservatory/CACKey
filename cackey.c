@@ -2288,6 +2288,8 @@ static struct cackey_pcsc_identity *cackey_copy_certs(struct cackey_pcsc_identit
 	}
 
 	for (idx = 0; idx < count; idx++) {
+		dest[idx].id_type = start[idx].id_type;
+
 		switch (dest[idx].id_type) {
 			case CACKEY_ID_TYPE_CAC:
 				memcpy(dest[idx].card.cac.applet, start[idx].card.cac.applet, sizeof(dest[idx].card.cac.applet));
@@ -2626,7 +2628,7 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 		case CACKEY_ID_TYPE_CAC:
 			break;
 		default:
-			CACKEY_DEBUG_PRINTF("Error.  identity->pcsc_identity is not a supported value.");
+			CACKEY_DEBUG_PRINTF("Error.  identity->pcsc_identity is not a supported value. Type is: 0x%lx (PIV = 0x%lx, CAC = 0x%lx)", (unsigned long) id_type, (unsigned long) CACKEY_ID_TYPE_PIV, (unsigned long) CACKEY_ID_TYPE_CAC);
 
 			return(-1);
 	}
