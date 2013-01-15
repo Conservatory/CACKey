@@ -1237,6 +1237,8 @@ static cackey_ret cackey_connect_card(struct cackey_slot *slot) {
 		slot->protocol = protocol;
 	}
 
+	CACKEY_DEBUG_PRINTF("Returning in success");
+
 	return(CACKEY_PCSC_S_OK);
 }
 
@@ -3114,6 +3116,8 @@ static cackey_ret cackey_token_present(struct cackey_slot *slot) {
 		return(CACKEY_PCSC_E_TOKENABSENT);
 	}
 
+	CACKEY_DEBUG_PRINTF("Calling SCardStatus() to determine card status");
+
 	atr_len = sizeof(atr);
 	status_ret = SCardStatus(slot->pcsc_card, NULL, &reader_len, &state, &protocol, atr, &atr_len);
 
@@ -3127,6 +3131,8 @@ static cackey_ret cackey_token_present(struct cackey_slot *slot) {
 
 			return(CACKEY_PCSC_E_TOKENABSENT);
 		}
+
+		CACKEY_DEBUG_PRINTF("Calling SCardStatus() again");
 
 		atr_len = sizeof(atr);
 		status_ret = SCardStatus(slot->pcsc_card, NULL, &reader_len, &state, &protocol, atr, &atr_len);
