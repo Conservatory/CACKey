@@ -1729,10 +1729,6 @@ static ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, 
 	}
 
 	if (send_ret != CACKEY_PCSC_S_OK) {
-		if (respcode == 0x6A86) {
-/* XXX TODO PIV */
-		}
-
 		CACKEY_DEBUG_PRINTF("cackey_send_apdu() failed, returning in failure");
 
 		return(-1);
@@ -2823,7 +2819,6 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 				CACKEY_DEBUG_PRINTF("Response from PIV for GENERATE AUTHENTICATION was not a 0x7C tag, returning in failure");
 
 				return(-1);
-
 			}
 
 			/* XXX TODO PIV */
