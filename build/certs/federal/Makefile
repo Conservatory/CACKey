@@ -1,4 +1,4 @@
-all: cert-1.crt CPCA_TRCA.crt
+all: cert-1.crt CPCA_TRCA.crt CommonPolicy.crt
 	grep -l 'Issuer: C=US, O=U.S. Government, OU=FPKI, CN=Federal Bridge CA' *.crt | xargs rm -f
 	grep -l 'Subject: C=US, O=U.S. Government, OU=FPKI, CN=Federal Common Policy CA' *.crt  | xargs grep -H 'Issuer:' | grep -v 'Issuer: C=us, O=U.S. Government, OU=FBCA, CN=Common Policy' | cut -f 1 -d : | xargs rm -f
 
@@ -12,6 +12,10 @@ caCertsIssuedTofcpca.p7c:
 
 root_sia.p7b:
 	wget -O "$@.new" --no-check-certificate https://pki.treas.gov/root_sia.p7b
+	mv "$@.new" "$@"
+
+CommonPolicy.crt:
+	wget -O - http://fpkia.gsa.gov/CommonPolicy/CommonPolicy.crt | openssl x509 -inform der -text > "$@.new"
 	mv "$@.new" "$@"
 
 cert-%.crt: root_sia.p7b caCertsIssuedTofcpca.p7c
@@ -31,7 +35,7 @@ cert-%.crt: root_sia.p7b caCertsIssuedTofcpca.p7c
 
 clean:
 	rm -f cert-*.crt
-	rm -f CPCA_TRCA.crt.new root_sia.p7b.new caCertsIssuedTofcpca.p7c.new
+	rm -f CPCA_TRCA.crt.new root_sia.p7b.new caCertsIssuedTofcpca.p7c.new CommonPolicy.crt.new
 
 distclean: clean
-	rm -f CPCA_TRCA.crt root_sia.p7b caCertsIssuedTofcpca.p7c
+	rm -f CPCA_TRCA.crt root_sia.p7b caCertsIssuedTofcpca.p7c CommonPolicy.crt
