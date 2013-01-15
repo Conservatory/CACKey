@@ -686,14 +686,30 @@ static const char *CACKEY_DEBUG_FUNC_ATTRIBUTE_TO_STR(CK_ATTRIBUTE_TYPE attr) {
 #  define CACKEY_DEBUG_FUNC_ATTRIBUTE_TO_STR(x) "DEBUG_DISABLED"
 #endif
 
+typedef enum {
+	CACKEY_ID_TYPE_CAC,
+	CACKEY_ID_TYPE_PIV,
+	CACKEY_ID_TYPE_CERT_ONLY
+} cackey_pcsc_id_type;
+
 struct cackey_pcsc_identity {
-	unsigned char applet[7];
-	uint16_t file;
+	cackey_pcsc_id_type id_type;
 
 	size_t certificate_len;
 	unsigned char *certificate;
 
 	ssize_t keysize;
+
+	union {
+		struct {
+			unsigned char applet[7];
+			uint16_t file;
+		} cac;
+
+		struct {
+			unsigned char key_id;
+		} piv;
+	} card;
 };
 
 struct cackey_identity {
@@ -1689,7 +1705,7 @@ static ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, 
 	unsigned char *buffer_p;
 	size_t init_count;
 
-	size_t offset = 0, max_offset, max_count, size;
+	size_t offset = 0, size;
 	unsigned char cmd[] = {0x5C, 0x03, 0x00, 0x00, 0x00};
 	uint16_t respcode;
 	int send_ret;
@@ -1698,9 +1714,6 @@ static ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, 
 	CACKEY_DEBUG_PRINTF("Called.");
 
 	init_count = count;
-
-	max_offset = count;
-	max_count = CACKEY_APDU_MTU;
 
 	cmd[2] = oid[0];
 	cmd[3] = oid[1];
@@ -2279,8 +2292,17 @@ static struct cackey_pcsc_identity *cackey_copy_certs(struct cackey_pcsc_identit
 	}
 
 	for (idx = 0; idx < count; idx++) {
-		memcpy(dest[idx].applet, start[idx].applet, sizeof(dest[idx].applet));
-		dest[idx].file = start[idx].file;
+		switch (dest[idx].id_type) {
+			case CACKEY_ID_TYPE_CAC:
+				memcpy(dest[idx].card.cac.applet, start[idx].card.cac.applet, sizeof(dest[idx].card.cac.applet));
+				dest[idx].card.cac.file = start[idx].card.cac.file;
+				break;
+			case CACKEY_ID_TYPE_PIV:
+				dest[idx].card.piv.key_id = start[idx].card.piv.key_id;
+				break;
+			case CACKEY_ID_TYPE_CERT_ONLY:
+				break;
+		}
 		dest[idx].certificate_len = start[idx].certificate_len;
 		dest[idx].keysize = start[idx].keysize;
 
@@ -2386,7 +2408,6 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 
 			piv = 1;
 		} else {
-
 			CACKEY_DEBUG_PRINTF("Unable to select CCC Applet, returning in failure");
 
 			/* Terminate SmartCard Transaction */
@@ -2423,8 +2444,8 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 			outidx++;
 
 			curr_id->keysize = -1;
-			curr_id->file = 0xFFFF;
-			curr_id->applet[0] = piv_key;
+			curr_id->id_type = CACKEY_ID_TYPE_PIV;
+			curr_id->card.piv.key_id = piv_key;
 
 			curr_id->certificate_len = read_ret;
 			curr_id->certificate = malloc(curr_id->certificate_len);
@@ -2490,12 +2511,13 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 				curr_id = &certs[outidx];
 				outidx++;
 
-				memcpy(curr_id->applet, curr_aid, sizeof(curr_id->applet));
-				curr_id->file = ccc_curr->value_cardurl->objectid;
+				curr_id->id_type = CACKEY_ID_TYPE_CAC;
+				memcpy(curr_id->card.cac.applet, curr_aid, sizeof(curr_id->card.cac.applet));
+				curr_id->card.cac.file = ccc_curr->value_cardurl->objectid;
 				curr_id->keysize = -1;
 
-				CACKEY_DEBUG_PRINTF("Filling curr_id->applet (%p) with %lu bytes:", curr_id->applet, (unsigned long) sizeof(curr_id->applet));
-				CACKEY_DEBUG_PRINTBUF("VAL:", curr_id->applet, sizeof(curr_id->applet));
+				CACKEY_DEBUG_PRINTF("Filling curr_id->card.cac.applet (%p) with %lu bytes:", curr_id->card.cac.applet, (unsigned long) sizeof(curr_id->card.cac.applet));
+				CACKEY_DEBUG_PRINTBUF("VAL:", curr_id->card.cac.applet, sizeof(curr_id->card.cac.applet));
 
 				curr_id->certificate_len = app_curr->length;
 
@@ -2552,6 +2574,7 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
  *
  */
 static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identity *identity, unsigned char *buf, size_t buflen, unsigned char *outbuf, size_t outbuflen, int padInput, int unpadOutput) {
+	cackey_pcsc_id_type id_type;
 	unsigned char dyn_auth_template[10];
 	unsigned char *tmpbuf, *tmpbuf_s, *outbuf_s;
 	unsigned char bytes_to_send, p1, class;
@@ -2562,7 +2585,6 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 	size_t tmpbuflen, padlen, tmpoutbuflen;
 	int free_tmpbuf = 0;
 	int le;
-	int piv;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -2594,6 +2616,23 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 		CACKEY_DEBUG_PRINTF("Error.  identity->pcsc_identity is NULL");
 
 		return(-1);
+	}
+
+	id_type = identity->pcsc_identity->id_type;
+	if (id_type == CACKEY_ID_TYPE_CERT_ONLY) {
+		CACKEY_DEBUG_PRINTF("Error.  identity->pcsc_identity is CACKEY_ID_TYPE_CERT_ONLY, which cannot be used for sign/decrypt");
+
+		return(-1);
+	}
+
+	switch (id_type) {
+		case CACKEY_ID_TYPE_PIV:
+		case CACKEY_ID_TYPE_CAC:
+			break;
+		default:
+			CACKEY_DEBUG_PRINTF("Error.  identity->pcsc_identity is not a supported value.");
+
+			return(-1);
 	}
 
 	/* Determine identity Key size */
@@ -2650,65 +2689,72 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 	/* Begin transaction */
 	cackey_begin_transaction(slot);
 
-	/* Determine type of transaction */
-	if (identity->pcsc_identity->file == 0xFFFF) {
-		piv = 1;
-	} else {
-		piv = 0;
-	}
-
 	/* Select correct applet */
-	if (!piv) {
-		CACKEY_DEBUG_PRINTF("Selecting applet found at %p ...", identity->pcsc_identity->applet);
-		cackey_select_applet(slot, identity->pcsc_identity->applet, sizeof(identity->pcsc_identity->applet));
+	switch (id_type) {
+		case CACKEY_ID_TYPE_CAC:
+			CACKEY_DEBUG_PRINTF("Selecting applet found at %p ...", identity->pcsc_identity->card.cac.applet);
+			cackey_select_applet(slot, identity->pcsc_identity->card.cac.applet, sizeof(identity->pcsc_identity->card.cac.applet));
 
-		/* Select correct file */
-		cackey_select_file(slot, identity->pcsc_identity->file);
-	} else {
-		dyn_auth_template[0] = 0x7C;
-		dyn_auth_template[1] = 0x82;
-		dyn_auth_template[2] = ((tmpbuflen + 6) & 0xff00) >> 8;
-		dyn_auth_template[3] = (tmpbuflen + 6) & 0x00ff;
-		dyn_auth_template[4] = 0x82;
-		dyn_auth_template[5] = 0x00;
-		dyn_auth_template[6] = 0x81;
-		dyn_auth_template[7] = 0x82;
-		dyn_auth_template[8] = (tmpbuflen & 0xff00) >> 8;
-		dyn_auth_template[9] = tmpbuflen & 0x00ff;
+			/* Select correct file */
+			cackey_select_file(slot, identity->pcsc_identity->card.cac.file);
+			break;
+		case CACKEY_ID_TYPE_PIV:
+			dyn_auth_template[0] = 0x7C;
+			dyn_auth_template[1] = 0x82;
+			dyn_auth_template[2] = ((tmpbuflen + 6) & 0xff00) >> 8;
+			dyn_auth_template[3] = (tmpbuflen + 6) & 0x00ff;
+			dyn_auth_template[4] = 0x82;
+			dyn_auth_template[5] = 0x00;
+			dyn_auth_template[6] = 0x81;
+			dyn_auth_template[7] = 0x82;
+			dyn_auth_template[8] = (tmpbuflen & 0xff00) >> 8;
+			dyn_auth_template[9] = tmpbuflen & 0x00ff;
 
-		send_ret = cackey_send_apdu(slot, 0x10, NISTSP800_73_3_INSTR_GENAUTH, NISTSP800_78_3_ALGO_RSA2048, identity->pcsc_identity->applet[0], sizeof(dyn_auth_template), dyn_auth_template, 0x00, NULL, NULL, NULL);
+			send_ret = cackey_send_apdu(slot, 0x10, NISTSP800_73_3_INSTR_GENAUTH, NISTSP800_78_3_ALGO_RSA2048, identity->pcsc_identity->card.piv.key_id, sizeof(dyn_auth_template), dyn_auth_template, 0x00, NULL, NULL, NULL);
+			break;
+		case CACKEY_ID_TYPE_CERT_ONLY:
+			break;
 	}
 
 	tmpbuf_s = tmpbuf;
 	outbuf_s = outbuf;
 	while (tmpbuflen) {
-		if (tmpbuflen > 245) {
-			bytes_to_send = 245;
-			if (piv) {
-				class = 0x10;
-				le = 0x00;
-			} else {
-				p1 = 0x80;
-				le = 0x00;
-			}
-		} else {
-			bytes_to_send = tmpbuflen;
-			if (piv) {
-				class = GSCIS_CLASS_ISO7816;
-				le = 256;
-			} else {
-				p1 = 0x00;
-				le = 0x00;
-			}
-		}
-
 		tmpoutbuflen = outbuflen;
 
-		if (piv) {
-			send_ret = cackey_send_apdu(slot, class, NISTSP800_73_3_INSTR_GENAUTH, NISTSP800_78_3_ALGO_RSA2048, identity->pcsc_identity->applet[0], bytes_to_send, tmpbuf, le, &respcode, outbuf, &tmpoutbuflen);
+		if (tmpbuflen > CACKEY_APDU_MTU) {
+			bytes_to_send = CACKEY_APDU_MTU;
 		} else {
-			send_ret = cackey_send_apdu(slot, GSCIS_CLASS_GLOBAL_PLATFORM, GSCIS_INSTR_SIGNDECRYPT, p1, 0x00, bytes_to_send, tmpbuf, le, &respcode, outbuf, &tmpoutbuflen);
+			bytes_to_send = tmpbuflen;
 		}
+
+		send_ret = CACKEY_PCSC_E_GENERIC;
+		switch (id_type) {
+			case CACKEY_ID_TYPE_CAC:
+				if (tmpbuflen > CACKEY_APDU_MTU) {
+					p1 = 0x80;
+					le = 0x00;
+				} else {
+					p1 = 0x00;
+					le = 0x00;
+				}
+
+				send_ret = cackey_send_apdu(slot, GSCIS_CLASS_GLOBAL_PLATFORM, GSCIS_INSTR_SIGNDECRYPT, p1, 0x00, bytes_to_send, tmpbuf, le, &respcode, outbuf, &tmpoutbuflen);
+				break;
+			case CACKEY_ID_TYPE_PIV:
+				if (tmpbuflen > CACKEY_APDU_MTU) {
+					class = 0x10;
+					le = 0x00;
+				} else {
+					class = GSCIS_CLASS_ISO7816;
+					le = 256;
+				}
+
+				send_ret = cackey_send_apdu(slot, class, NISTSP800_73_3_INSTR_GENAUTH, NISTSP800_78_3_ALGO_RSA2048, identity->pcsc_identity->card.piv.key_id, bytes_to_send, tmpbuf, le, &respcode, outbuf, &tmpoutbuflen);
+				break;
+			case CACKEY_ID_TYPE_CERT_ONLY:
+				break;
+		}
+
 		if (send_ret != CACKEY_PCSC_S_OK) {
 			CACKEY_DEBUG_PRINTF("ADPU Sending Failed -- returning in error.");
 
@@ -2771,17 +2817,20 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 #endif
 
 	/* We must remove the "7C" tag to get to the signature */
-	if (piv) {
-		if (outbuf[0] != 0x7C) {
-			CACKEY_DEBUG_PRINTF("Response from PIV for GENERATE AUTHENTICATION was not a 0x7C tag, returning in failure");
+	switch (id_type) {
+		case CACKEY_ID_TYPE_PIV:
+			if (outbuf[0] != 0x7C) {
+				CACKEY_DEBUG_PRINTF("Response from PIV for GENERATE AUTHENTICATION was not a 0x7C tag, returning in failure");
 
+				return(-1);
 
-			return(-1);
+			/* XXX TODO PIV */
+			memmove(outbuf, outbuf + 8, retval - 8);
+			retval -= 8;
 		}
-
-		/* XXX TODO PIV */
-		memmove(outbuf, outbuf + 8, retval - 8);
-		retval -= 8;
+		case CACKEY_ID_TYPE_CAC:
+		case CACKEY_ID_TYPE_CERT_ONLY:
+			break;
 	}
 
 	/* Unpad reply */
