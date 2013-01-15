@@ -1702,9 +1702,93 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 	return(CACKEY_PCSC_E_GENERIC);
 }
 
+static unsigned char *cackey_read_bertlv_tag(unsigned char *buffer, size_t *buffer_len_p, unsigned char tag, unsigned char *outbuffer, size_t *outbuffer_len_p) {
+	unsigned char *buffer_p;
+	size_t outbuffer_len, buffer_len;
+	size_t size;
+	int idx;
+
+	CACKEY_DEBUG_PRINTF("Called.");
+
+	if (buffer_len_p == NULL) {
+		CACKEY_DEBUG_PRINTF("buffer_len_p is NULL.  Returning in failure.");
+
+		return(NULL);
+	}
+
+	if (outbuffer_len_p == NULL) {
+		CACKEY_DEBUG_PRINTF("outbuffer_len_p is NULL.  Returning in failure.");
+
+		return(NULL);
+	}
+
+	buffer_len = *outbuffer_len_p;
+	outbuffer_len = *outbuffer_len_p;
+
+	buffer_p = buffer;
+	if (buffer_p[0] != tag) {
+		CACKEY_DEBUG_PRINTF("Tag found was not tag expected.  Tag = %02x, Expected = %02x.  Returning in failure.", (unsigned int) buffer_p[0], tag);
+
+		return(NULL);
+	}
+
+	buffer_p++;
+	buffer_len--;
+
+	if ((buffer_p[0] & 0x80) == 0x80) {
+		size = 0;
+		idx = (buffer_p[0] & 0x7f);
+
+		if (idx > buffer_len) {
+			CACKEY_DEBUG_PRINTF("Malformed BER value -- not enough bytes available to read length (idx = %i, buffer_len = %lu)", idx, (unsigned long) buffer_len);
+
+			return(NULL);
+		}
+
+		for (; idx > 0; idx--) {
+			buffer_p++;
+			buffer_len--;
+
+			size <<= 8;
+			size |= buffer_p[0];
+		}
+	} else {
+		size = buffer_p[0];
+	}
+
+	buffer_p++;
+	buffer_len--;
+
+	if (size > outbuffer_len) {
+		CACKEY_DEBUG_PRINTF("Unable to copy value buffer to outbuffer, not enough room.  Value buffer length = %lu, out buffer length = %lu", (unsigned long) size, (unsigned long) outbuffer_len);
+
+		return(NULL);
+	}
+
+	*outbuffer_len_p = size;
+	if (outbuffer) {
+		memcpy(outbuffer, buffer_p, size);
+		buffer_p += size;
+		buffer_len -= size;
+
+		*buffer_len_p = buffer_len;
+
+		CACKEY_DEBUG_PRINTBUF("BER-TLV results:", outbuffer, size);
+	} else {
+		memmove(buffer, buffer_p, size);
+		buffer_p = buffer;
+
+		CACKEY_DEBUG_PRINTBUF("BER-TLV results:", buffer, size);
+	}
+
+	CACKEY_DEBUG_PRINTF("Returning in success.  Size of contents for tag %02x is %lu", (unsigned int) tag, (unsigned long) size);
+
+	return(buffer_p);
+}
+
 /*
  * SYNPOSIS
- *     ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, size_t count, unsigned char oid[3]);
+ *     ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, size_t buffer_len, unsigned char oid[3]);
  *
  * ARGUMENTS
  *     struct cackey_slot *slot
@@ -1713,7 +1797,7 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
  *     unsigned char *buffer
  *         [OUT] Buffer
  *
- *     size_t count
+ *     size_t buffer_len
  *         Number of bytes to attempt to read
  *
  *     unsigned char oid[3]
@@ -1727,31 +1811,28 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
  *     None
  *
  */
-static ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, size_t count, unsigned char oid[3]) {
-	unsigned char *buffer_p;
-	size_t init_count;
-
-	size_t offset = 0, size;
+static ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, size_t buffer_len, unsigned char oid[3]) {
 	unsigned char cmd[] = {0x5C, 0x03, 0x00, 0x00, 0x00};
+	unsigned char *buffer_p;
+	size_t init_buffer_len, size;
 	uint16_t respcode;
 	int send_ret;
-	int idx;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
-	init_count = count;
+	init_buffer_len = buffer_len;
 
 	cmd[2] = oid[0];
 	cmd[3] = oid[1];
 	cmd[4] = oid[2];
 
 	/* 256 to indicate the largest message size -- not clear if this will work with all messages */
-	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, NISTSP800_73_3_INSTR_GET_DATA, 0x3F, 0xFF, sizeof(cmd), cmd, 256, &respcode, buffer, &count);
+	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, NISTSP800_73_3_INSTR_GET_DATA, 0x3F, 0xFF, sizeof(cmd), cmd, 256, &respcode, buffer, &buffer_len);
 
 	if (send_ret == CACKEY_PCSC_E_RETRY) {
 		CACKEY_DEBUG_PRINTF("ADPU Sending failed, retrying read buffer");
 
-		return(cackey_get_data(slot, buffer, init_count, oid));
+		return(cackey_get_data(slot, buffer, init_buffer_len, oid));
 	}
 
 	if (send_ret != CACKEY_PCSC_S_OK) {
@@ -1760,63 +1841,30 @@ static ssize_t cackey_get_data(struct cackey_slot *slot, unsigned char *buffer, 
 		return(-1);
 	}
 
-	offset += count;
-
 #ifdef CACKEY_PARANOID
 #  ifdef _POSIX_SSIZE_MAX
-	if (offset > _POSIX_SSIZE_MAX) {
-		CACKEY_DEBUG_PRINTF("Offset exceeds maximum value, returning in failure. (max = %li, offset = %lu)", (long) _POSIX_SSIZE_MAX, (unsigned long) offset);
+	if (buffer_len > _POSIX_SSIZE_MAX) {
+		CACKEY_DEBUG_PRINTF("Read bytes (buffer_len) exceeds maximum value, returning in failure. (max = %li, buffer_len = %lu)", (long) _POSIX_SSIZE_MAX, (unsigned long) buffer_len);
 
 		return(-1);
 	}
 #  endif
 #endif
 
-	if (offset < 2) {
-		CACKEY_DEBUG_PRINTF("APDU GET DATA returned %lu bytes, which is too short for a BER-TLV response", (unsigned long) offset);
+	if (buffer_len < 2) {
+		CACKEY_DEBUG_PRINTF("APDU GET DATA returned %lu bytes, which is too short for a BER-TLV response", (unsigned long) buffer_len);
 
 		return(-1);
 	}
 
-	buffer_p = buffer;
-	if (*buffer_p != 0x53) {
-		CACKEY_DEBUG_PRINTF("APDU GET DATA did not return a BER-TLV with tag 53.  Tag = %02x", (unsigned int) *buffer_p);
+	size = buffer_len;
+	buffer_p = cackey_read_bertlv_tag(buffer, &buffer_len, 0x53, NULL, &size);
+
+	if (buffer_p == NULL) {
+		CACKEY_DEBUG_PRINTF("Tag decoding failed, returning in error.");
 
 		return(-1);
 	}
-	buffer_p++;
-
-	if ((*buffer_p & 0x80) == 0x80) {
-		size = 0;
-		idx = (*buffer_p & 0x7f);
-
-		if (((buffer_p - buffer) + idx) >= offset) {
-			CACKEY_DEBUG_PRINTF("Malformed BER value -- not enough bytes available to read length");
-
-			return(-1);
-		}
-
-		for (; idx > 0; idx--) {
-			buffer_p++;
-			size <<= 8;
-			size |= *buffer_p;
-		}
-	} else {
-		size = *buffer_p;
-	}
-	buffer_p++;
-
-	if (((buffer_p - buffer) + size) != offset) {
-		CACKEY_DEBUG_PRINTF("Entire buffer is not consumed!");
-
-		if (((buffer_p - buffer) + size) > offset) {
-			CACKEY_DEBUG_PRINTF("Encoded size is greater than the amount of data read, dropping");
-
-			return(-1);
-		}
-	}
-
-	memmove(buffer, buffer_p, size);
 
 	CACKEY_DEBUG_PRINTBUF("GET DATA result", buffer, size);
 
@@ -2357,10 +2405,11 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 	unsigned char ccc_aid[] = {GSCIS_AID_CCC}, piv_aid[] = {NISTSP800_73_3_PIV_AID};
 	unsigned char *piv_oid, piv_oid_pivauth[] = {NISTSP800_73_3_OID_PIVAUTH}, piv_oid_signature[] = {NISTSP800_73_3_OID_SIGNATURE}, piv_oid_keymgt[] = {NISTSP800_73_3_OID_KEYMGT};
 	unsigned char curr_aid[7];
-	unsigned char buffer[8192];
+	unsigned char buffer[8192], *buffer_p;
 	unsigned long outidx = 0;
 	cackey_ret transaction_ret;
 	ssize_t read_ret;
+	size_t buffer_len;
 	int certs_resizable;
 	int send_ret, select_ret;
 	int piv_key, piv = 0;
@@ -2473,9 +2522,22 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 
 			curr_id->certificate_len = read_ret;
 			curr_id->certificate = malloc(curr_id->certificate_len);
-			memcpy(curr_id->certificate, buffer + 4, curr_id->certificate_len - 4); /* XXX TODO PIV (-4 header, -5 trailer == why ?) */
-			curr_id->certificate_len -= 4;
-			curr_id->certificate_len -= 5;
+
+			CACKEY_DEBUG_PRINTBUF("Pre-shrink (-4header, -5trailer) == ", buffer, curr_id->certificate_len);
+
+			buffer_len = sizeof(buffer);
+			buffer_p = cackey_read_bertlv_tag(buffer, &buffer_len, 0x70, curr_id->certificate, &curr_id->certificate_len);
+
+			if (buffer_p == NULL) {
+				CACKEY_DEBUG_PRINTF("Reading certificate from BER-TLV response failed, skipping key %i", idx);
+				free(curr_id->certificate);
+
+				outidx--;
+
+				continue;
+			}
+
+			CACKEY_DEBUG_PRINTBUF("Post-shrink (-4header, -5trailer) == ", curr_id->certificate, curr_id->certificate_len);
 		}
 	} else {
 		/* Read all the applets from the CCC's TLV */
@@ -2600,13 +2662,13 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identity *identity, unsigned char *buf, size_t buflen, unsigned char *outbuf, size_t outbuflen, int padInput, int unpadOutput) {
 	cackey_pcsc_id_type id_type;
 	unsigned char dyn_auth_template[10];
-	unsigned char *tmpbuf, *tmpbuf_s, *outbuf_s;
+	unsigned char *tmpbuf, *tmpbuf_s, *outbuf_s, *outbuf_p;
 	unsigned char bytes_to_send, p1, class;
 	unsigned char blocktype;
 	cackey_ret send_ret;
 	uint16_t respcode;
 	ssize_t retval = 0, unpadoffset;
-	size_t tmpbuflen, padlen, tmpoutbuflen;
+	size_t tmpbuflen, padlen, tmpoutbuflen, outbuf_len;
 	int free_tmpbuf = 0;
 	int le;
 
@@ -2843,15 +2905,26 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 	/* We must remove the "7C" tag to get to the signature */
 	switch (id_type) {
 		case CACKEY_ID_TYPE_PIV:
-			if (outbuf[0] != 0x7C) {
+			outbuf_len = retval;
+			outbuf_p = cackey_read_bertlv_tag(outbuf, &outbuf_len, 0x7C, NULL,  &outbuf_len);
+			if (outbuf_p == NULL) {
 				CACKEY_DEBUG_PRINTF("Response from PIV for GENERATE AUTHENTICATION was not a 0x7C tag, returning in failure");
 
 				return(-1);
 			}
 
-			/* XXX TODO PIV */
-			memmove(outbuf, outbuf + 8, retval - 8);
-			retval -= 8;
+			retval = outbuf_len;
+
+			outbuf_len = retval;
+			outbuf_p = cackey_read_bertlv_tag(outbuf, &outbuf_len, 0x82, NULL,  &outbuf_len);
+			if (outbuf_p == NULL) {
+				CACKEY_DEBUG_PRINTF("Response from PIV for GENERATE AUTHENTICATION was not a 0x82 with then 0x7C tag, returning in failure");
+
+				return(-1);
+			}
+
+			retval = outbuf_len;
+
 			break;
 		case CACKEY_ID_TYPE_CAC:
 		case CACKEY_ID_TYPE_CERT_ONLY:
