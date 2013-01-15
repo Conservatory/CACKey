@@ -1,6 +1,6 @@
 all: cert-1.crt CPCA_TRCA.crt
 	grep -l 'Issuer: C=US, O=U.S. Government, OU=FPKI, CN=Federal Bridge CA' *.crt | xargs rm -f
-	grep -l 'Subject: C=US, O=U.S. Government, OU=FPKI, CN=Federal Common Policy CA' *.crt | xargs grep -l 'Issuer: C=US, O=U.S. Government, OU=Department of the Treasury, OU=Certification Authorities, OU=US Treasury Root CA' | xargs rm -f
+	grep -l 'Subject: C=US, O=U.S. Government, OU=FPKI, CN=Federal Common Policy CA' *.crt  | xargs grep -H 'Issuer:' | grep -v 'Issuer: C=us, O=U.S. Government, OU=FBCA, CN=Common Policy' | cut -f 1 -d : | xargs rm -f
 
 CPCA_TRCA.crt:
 	wget -O - --no-check-certificate https://pki.treas.gov/CPCA_TRCA.cer | openssl x509 -text > "$@.new"
