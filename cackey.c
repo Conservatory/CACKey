@@ -734,6 +734,7 @@ struct cackey_pcsc_identity {
 
 		struct {
 			unsigned char key_id;
+			char label[32];
 		} piv;
 	} card;
 };
@@ -2373,6 +2374,7 @@ static struct cackey_pcsc_identity *cackey_copy_certs(struct cackey_pcsc_identit
 				break;
 			case CACKEY_ID_TYPE_PIV:
 				dest[idx].card.piv.key_id = start[idx].card.piv.key_id;
+				memcpy(dest[idx].card.piv.label, start[idx].card.piv.label, sizeof(dest[idx].card.piv.label));
 				break;
 			case CACKEY_ID_TYPE_CERT_ONLY:
 				break;
@@ -2409,6 +2411,7 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 	unsigned char curr_aid[7];
 	unsigned char buffer[8192], *buffer_p;
 	unsigned long outidx = 0;
+	char *piv_label;
 	cackey_ret transaction_ret;
 	ssize_t read_ret;
 	size_t buffer_len;
@@ -2498,14 +2501,17 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 				case 0:
 					piv_oid = piv_oid_pivauth;
 					piv_key = NISTSP800_78_3_KEY_PIVAUTH;
+					piv_label = "Authentication";
 					break;
 				case 1:
 					piv_oid = piv_oid_signature;
 					piv_key = NISTSP800_78_3_KEY_SIGNATURE;
+					piv_label = "Signature";
 					break;
 				case 2:
 					piv_oid = piv_oid_keymgt;
 					piv_key = NISTSP800_78_3_KEY_KEYMGT;
+					piv_label = "Key Management";
 					break;
 			}
 
@@ -2521,11 +2527,10 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 			curr_id->keysize = -1;
 			curr_id->id_type = CACKEY_ID_TYPE_PIV;
 			curr_id->card.piv.key_id = piv_key;
+			memcpy(curr_id->card.piv.label, piv_label, strlen(piv_label) + 1);
 
 			curr_id->certificate_len = read_ret;
 			curr_id->certificate = malloc(curr_id->certificate_len);
-
-			CACKEY_DEBUG_PRINTBUF("Pre-shrink (-4header, -5trailer) == ", buffer, curr_id->certificate_len);
 
 			buffer_len = sizeof(buffer);
 			buffer_p = cackey_read_bertlv_tag(buffer, &buffer_len, 0x70, curr_id->certificate, &curr_id->certificate_len);
@@ -2538,8 +2543,6 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 
 				continue;
 			}
-
-			CACKEY_DEBUG_PRINTBUF("Post-shrink (-4header, -5trailer) == ", curr_id->certificate, curr_id->certificate_len);
 		}
 	} else {
 		/* Read all the applets from the CCC's TLV */
@@ -3478,13 +3481,17 @@ static CK_ATTRIBUTE_PTR cackey_get_attributes(CK_OBJECT_CLASS objectclass, struc
 			case CKA_LABEL:
 				CACKEY_DEBUG_PRINTF("Requesting attribute CKA_LABEL (0x%08lx) ...", (unsigned long) curr_attr_type);
 
-				/* XXX: Determine name */
-				ulValueLen = snprintf((char *) ucTmpBuf, sizeof(ucTmpBuf), "Identity #%lu", (unsigned long) identity_num);
-				pValue = ucTmpBuf;
+				if (identity->id_type == CACKEY_ID_TYPE_PIV) {
+					pValue = identity->card.piv.label;
+					ulValueLen = strlen(pValue);
+				} else {
+					ulValueLen = snprintf((char *) ucTmpBuf, sizeof(ucTmpBuf), "Identity #%lu", (unsigned long) identity_num);
+					pValue = ucTmpBuf;
 
-				if (ulValueLen >= sizeof(ucTmpBuf)) {
-					ulValueLen = 0;
-					pValue = NULL;
+					if (ulValueLen >= sizeof(ucTmpBuf)) {
+						ulValueLen = 0;
+						pValue = NULL;
+					}
 				}
 
 				CACKEY_DEBUG_PRINTF(" ... returning (%p/%lu)", pValue, (unsigned long) ulValueLen);
