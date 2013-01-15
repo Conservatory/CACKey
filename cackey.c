@@ -2824,10 +2824,12 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 
 				return(-1);
 
+			}
+
 			/* XXX TODO PIV */
 			memmove(outbuf, outbuf + 8, retval - 8);
 			retval -= 8;
-		}
+			break;
 		case CACKEY_ID_TYPE_CAC:
 		case CACKEY_ID_TYPE_CERT_ONLY:
 			break;
