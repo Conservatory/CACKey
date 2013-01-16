@@ -1,7 +1,7 @@
 #!/bin/bash
 # Shell Script to make Mac OS X Releases of CACKey
 # Kenneth Van Alstyne
-# kenneth.vanalstyne@associates.hq.dhs.gov
+# DC1SAN_SUPPORT@hq.dhs.gov
 CACKEY_VERSION=`cat configure.ac | grep AC_INIT | cut -d " " -f 2 | sed 's_)__'`
 
 # Check to see if we're building on Mac OS X 10.7 "Lion"

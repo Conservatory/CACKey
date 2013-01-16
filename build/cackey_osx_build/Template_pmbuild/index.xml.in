@@ -34,9 +34,9 @@
 \f0\fs26 \cf0 Release information:\
     pkg: CACKey\
  author: US Army Corps of Engineers\
-Mac build contact: Kenneth Van Alstyne <kenneth.vanalstyne@hq.dhs.gov>\
+Mac build contact: Kenneth Van Alstyne <DC1SAN_SUPPORT@hq.dhs.gov>\
                    US Department of Homeland Security\
-contact: Roy Keene <roy.s.keene@usace.army.mil>\
+contact: Roy Keene <DC1-UNIX@hq.dhs.gov>\
 ------------------------------------------------\
 \
 The PKCS11.tokend connector module included in this package is licensed under\
