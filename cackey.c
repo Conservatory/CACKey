@@ -3031,7 +3031,9 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
  *
  */
 static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, unsigned long pin_len, int *tries_remaining_p) {
+	struct cackey_pcsc_identity *pcsc_identities;
 	unsigned char cac_pin[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+	unsigned long num_certs;
 	uint16_t response_code;
 	int tries_remaining;
 	int send_ret;
@@ -3049,13 +3051,22 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 		memcpy(cac_pin, pin, pin_len);
 	}
 
+	/* PIV authentication uses a "key_reference" of 0x80 */
+	pcsc_identities = cackey_read_certs(slot, NULL, &num_certs);
+	if (num_certs > 0 && pcsc_identities != NULL) {
+		switch (pcsc_identities[0].id_type) {
+			case CACKEY_ID_TYPE_PIV:
+				CACKEY_DEBUG_PRINTF("We recently had a PIV card, so we will attempt to authenticate using the PIV Application key reference");
+
+				key_reference = 0x80;
+				break;
+			default:
+				break;
+		}
+	}
+
 	/* Issue PIN Verify */
 	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, GSCIS_INSTR_VERIFY, 0x00, key_reference, sizeof(cac_pin), cac_pin, 0x00, &response_code, NULL, NULL);
-	if (send_ret != CACKEY_PCSC_S_OK && response_code == 0x6A88) {
-		key_reference = 0x80;
-
-		send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, GSCIS_INSTR_VERIFY, 0x00, key_reference, sizeof(cac_pin), cac_pin, 0x00, &response_code, NULL, NULL);
-	}
 
 	if (send_ret != CACKEY_PCSC_S_OK) {
 		if ((response_code & 0x63C0) == 0x63C0) {
