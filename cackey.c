@@ -1118,7 +1118,11 @@ static void cackey_mark_slot_reset(struct cackey_slot *slot) {
 
 	slot->slot_reset = 1;
 	slot->pcsc_card_connected = 0;
-	slot->token_flags = CKF_LOGIN_REQUIRED;
+	if (cackey_pin_command == NULL) {
+		slot->token_flags = CKF_LOGIN_REQUIRED;
+	} else {
+		slot->token_flags = 0;
+	}
 
 	CACKEY_DEBUG_PRINTF("Returning.");
 
@@ -2874,7 +2878,6 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 				CACKEY_DEBUG_PRINTF("Security status not satisified.  Returning NEEDLOGIN");
 
 				cackey_mark_slot_reset(slot);
-				slot->token_flags = CKF_LOGIN_REQUIRED;
 
 				return(CACKEY_PCSC_E_NEEDLOGIN);
 			}
@@ -3973,7 +3976,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 	struct cackey_identity *identities;
 	unsigned long num_ids, id_idx, curr_id_type;
 	unsigned long num_certs, num_dod_certs, cert_idx;
-	int include_extra_certs = 0;
+	int include_extra_certs = 0, include_dod_certs;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -3995,10 +3998,24 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 		include_extra_certs = 0;
 	}
 
-	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
-		num_dod_certs = 0;
+#ifdef CACKEY_NO_EXTRA_CERTS
+	if (getenv("CACKEY_EXTRA_CERTS") != NULL) {
+		include_dod_certs = 1;
 	} else {
+		include_dod_certs = 0;
+	}
+#else
+	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
+		include_dod_certs = 0;
+	} else {
+		include_dod_certs = 1;
+	}
+#endif
+
+	if (include_dod_certs) {
 		num_dod_certs = sizeof(extra_certs) / sizeof(extra_certs[0]);
+	} else {
+		num_dod_certs = 0;
 	}
 
 	if (slot->internal) {
@@ -4408,7 +4425,11 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 							cackey_slots[currslot].pcsc_card_connected = 0;
 							cackey_slots[currslot].transaction_depth = 0;
 							cackey_slots[currslot].transaction_need_hw_lock = 0;
-							cackey_slots[currslot].token_flags = CKF_LOGIN_REQUIRED;
+							if (cackey_pin_command == NULL) {
+								cackey_slots[currslot].token_flags = CKF_LOGIN_REQUIRED;
+							} else {
+								cackey_slots[currslot].token_flags = 0;
+							}
 							cackey_slots[currslot].label = NULL;
 
 							cackey_mark_slot_reset(&cackey_slots[currslot]);
@@ -5363,7 +5384,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_Logout)(CK_SESSION_HANDLE hSession) {
 	}
 
 	cackey_sessions[hSession].state = CKS_RO_PUBLIC_SESSION;
-	cackey_slots[slotID].token_flags = CKF_LOGIN_REQUIRED;
+
+	if (cackey_pin_command == NULL) {
+		cackey_slots[slotID].token_flags = CKF_LOGIN_REQUIRED;
+	} else {
+		cackey_slots[slotID].token_flags = 0;
+	}
 
 	mutex_retval = cackey_mutex_unlock(cackey_biglock);
 	if (mutex_retval != 0) {
@@ -6288,6 +6314,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_DecryptUpdate)(CK_SESSION_HANDLE hSession, CK_BYTE_P
 			/* Ask card to decrypt */
 			buflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].decrypt_identity, pEncryptedPart, ulEncryptedPartLen, buf, sizeof(buf), 0, 1);
 
+			if (buflen == CACKEY_PCSC_E_NEEDLOGIN && cackey_pin_command != NULL) {
+				if (C_Login(hSession, CKU_USER, NULL, 0) == CKR_OK) {
+					buflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].decrypt_identity, pEncryptedPart, ulEncryptedPartLen, buf, sizeof(buf), 0, 1);
+				}
+			}
+
 			if (buflen < 0) {
 				/* Decryption failed. */
 				if (buflen == CACKEY_PCSC_E_NEEDLOGIN) {
@@ -6798,6 +6830,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_SignFinal)(CK_SESSION_HANDLE hSession, CK_BYTE_PTR p
 			/* Ask card to sign */
 			CACKEY_DEBUG_PRINTF("Asking to sign from identity %p in session %lu", (void *) cackey_sessions[hSession].sign_identity, (unsigned long) hSession);
 			sigbuflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].sign_identity, cackey_sessions[hSession].sign_buf, cackey_sessions[hSession].sign_bufused, sigbuf, sizeof(sigbuf), 1, 0);
+
+			if (sigbuflen == CACKEY_PCSC_E_NEEDLOGIN && cackey_pin_command != NULL) {
+				if (C_Login(hSession, CKU_USER, NULL, 0) == CKR_OK) {
+					sigbuflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].sign_identity, cackey_sessions[hSession].sign_buf, cackey_sessions[hSession].sign_bufused, sigbuf, sizeof(sigbuf), 1, 0);
+				}
+			}
 
 			if (sigbuflen < 0) {
 				/* Signing failed. */

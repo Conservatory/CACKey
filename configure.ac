@@ -154,6 +154,17 @@ if ! test "${dodcertsonhwslots}" = 'no'; then
 	AC_DEFINE(CACKEY_CARD_SLOT_INCLUDE_EXTRA_CERTS, [1], [Specify that DoD certificates should be made available on hardware token slots])
 fi
 
+dnl Option to disable DoD certs entirely
+AC_ARG_ENABLE(dod-certs, AC_HELP_STRING([--disable-dod-certs], [Disable including DoD certs entirely.  The user may override this with the CACKEY_EXTRA_CERTS environment variable.]), [
+	dodcerts=$enableval
+], [
+	dodcerts=yes
+])
+
+if test "${dodcerts}" = 'no'; then
+	AC_DEFINE(CACKEY_NO_EXTRA_CERTS, [1], [Specify that DoD certificates should not be made available])
+fi
+
 dnl Option to hard-code a command to run to request a PIN (enabling protected authentication path)
 AC_ARG_WITH(pin-command, AC_HELP_STRING([--with-pin-command=<command>], [Specify a command to run to request a PIN from the user.  The user may override this with the CACKEY_PIN_COMMAND environment variable.]), [
 	pincommand="${withval}"
