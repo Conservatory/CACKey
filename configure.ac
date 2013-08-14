@@ -154,6 +154,17 @@ if ! test "${dodcertsonhwslots}" = 'no'; then
 	AC_DEFINE(CACKEY_CARD_SLOT_INCLUDE_EXTRA_CERTS, [1], [Specify that DoD certificates should be made available on hardware token slots])
 fi
 
+dnl Option to disable DoD certs entirely
+AC_ARG_ENABLE(dod-certs, AC_HELP_STRING([--disable-dod-certs], [Disable including DoD certs entirely.  The user may override this with the CACKEY_EXTRA_CERTS environment variable.]), [
+	dodcerts=$enableval
+], [
+	dodcerts=yes
+])
+
+if test "${dodcerts}" = 'no'; then
+	AC_DEFINE(CACKEY_NO_EXTRA_CERTS, [1], [Specify that DoD certificates should not be made available])
+fi
+
 dnl Set version script, to limit the scope of symbols
 DC_SETVERSIONSCRIPT(libcackey.vers, libcackey.syms)
 
