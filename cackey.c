@@ -2874,7 +2874,7 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 			/* End transaction */
 			cackey_end_transaction(slot);
 
-			if (respcode == 0x6982) {
+			if (respcode == 0x6982 || respcode == 0x6e00) {
 				CACKEY_DEBUG_PRINTF("Security status not satisified.  Returning NEEDLOGIN");
 
 				cackey_mark_slot_reset(slot);
@@ -5174,7 +5174,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_SetOperationState)(CK_SESSION_HANDLE hSession, CK_BY
 	return(CKR_FUNCTION_NOT_SUPPORTED);
 }
 
-CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen) {
+CK_DEFINE_FUNCTION(CK_RV, _C_LoginMutexArg)(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen, int lock_mutex) {
 	CK_SLOT_ID slotID;
 	FILE *pinfd;
 	char *pincmd, pinbuf[64], *fgets_ret;
@@ -5203,15 +5203,19 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		return(CKR_USER_TYPE_INVALID);
 	}
 
-	mutex_retval = cackey_mutex_lock(cackey_biglock);
-	if (mutex_retval != 0) {
-		CACKEY_DEBUG_PRINTF("Error.  Locking failed.");
+	if (lock_mutex) {
+		mutex_retval = cackey_mutex_lock(cackey_biglock);
+		if (mutex_retval != 0) {
+			CACKEY_DEBUG_PRINTF("Error.  Locking failed.");
 
-		return(CKR_GENERAL_ERROR);
+			return(CKR_GENERAL_ERROR);
+		}
 	}
 
 	if (!cackey_sessions[hSession].active) {
-		cackey_mutex_unlock(cackey_biglock);
+		if (lock_mutex) {
+			cackey_mutex_unlock(cackey_biglock);
+		}
 
 		CACKEY_DEBUG_PRINTF("Error.  Session not active.");
 		
@@ -5223,13 +5227,19 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 	if (slotID < 0 || slotID >= (sizeof(cackey_slots) / sizeof(cackey_slots[0]))) {
 		CACKEY_DEBUG_PRINTF("Error. Invalid slot requested (%lu), outside of valid range", slotID);
 
+		if (lock_mutex) {
+			cackey_mutex_unlock(cackey_biglock);
+		}
+
 		return(CKR_GENERAL_ERROR);
 	}
 
 	if (cackey_slots[slotID].active == 0) {
 		CACKEY_DEBUG_PRINTF("Error. Invalid slot requested (%lu), slot not currently active", slotID);
 
-		cackey_mutex_unlock(cackey_biglock);
+		if (lock_mutex) {
+			cackey_mutex_unlock(cackey_biglock);
+		}
 
 		return(CKR_GENERAL_ERROR);
 	}
@@ -5246,7 +5256,9 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		if (pinfd == NULL) {
 			CACKEY_DEBUG_PRINTF("Error.  %s: Unable to run", pincmd);
 
-			cackey_mutex_unlock(cackey_biglock);
+			if (lock_mutex) {
+				cackey_mutex_unlock(cackey_biglock);
+			}
 
 			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
 
@@ -5262,7 +5274,9 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		if (pclose_ret != 0) {
 			CACKEY_DEBUG_PRINTF("Error.  %s: exited with non-zero status of %i", pincmd, pclose_ret);
 
-			cackey_mutex_unlock(cackey_biglock);
+			if (lock_mutex) {
+				cackey_mutex_unlock(cackey_biglock);
+			}
 
 			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
 
@@ -5272,7 +5286,9 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		if (strlen(pinbuf) < 1) {
 			CACKEY_DEBUG_PRINTF("Error.  %s: returned no data", pincmd);
 
-			cackey_mutex_unlock(cackey_biglock);
+			if (lock_mutex) {
+				cackey_mutex_unlock(cackey_biglock);
+			}
 
 			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
 
@@ -5289,7 +5305,9 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 
 	login_ret = cackey_login(&cackey_slots[slotID], pPin, ulPinLen, &tries_remaining);
 	if (login_ret != CACKEY_PCSC_S_OK) {
-		cackey_mutex_unlock(cackey_biglock);
+		if (lock_mutex) {
+			cackey_mutex_unlock(cackey_biglock);
+		}
 
 		if (login_ret == CACKEY_PCSC_E_LOCKED) {
 			CACKEY_DEBUG_PRINTF("Error.  Token is locked.");
@@ -5322,16 +5340,22 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 
 	cackey_sessions[hSession].state = CKS_RO_USER_FUNCTIONS;
 
-	mutex_retval = cackey_mutex_unlock(cackey_biglock);
-	if (mutex_retval != 0) {
-		CACKEY_DEBUG_PRINTF("Error.  Unlocking failed.");
+	if (lock_mutex) {
+		mutex_retval = cackey_mutex_unlock(cackey_biglock);
+		if (mutex_retval != 0) {
+			CACKEY_DEBUG_PRINTF("Error.  Unlocking failed.");
 
-		return(CKR_GENERAL_ERROR);
+			return(CKR_GENERAL_ERROR);
+		}
 	}
 
 	CACKEY_DEBUG_PRINTF("Returning CKR_OK (%i)", CKR_OK);
 
 	return(CKR_OK);
+}
+
+CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen) {
+	return(_C_LoginMutexArg(hSession, userType, pPin, ulPinLen, 1));
 }
 
 CK_DEFINE_FUNCTION(CK_RV, C_Logout)(CK_SESSION_HANDLE hSession) {
@@ -6315,7 +6339,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_DecryptUpdate)(CK_SESSION_HANDLE hSession, CK_BYTE_P
 			buflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].decrypt_identity, pEncryptedPart, ulEncryptedPartLen, buf, sizeof(buf), 0, 1);
 
 			if (buflen == CACKEY_PCSC_E_NEEDLOGIN && cackey_pin_command != NULL) {
-				if (C_Login(hSession, CKU_USER, NULL, 0) == CKR_OK) {
+				if (_C_LoginMutexArg(hSession, CKU_USER, NULL, 0, 0) == CKR_OK) {
 					buflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].decrypt_identity, pEncryptedPart, ulEncryptedPartLen, buf, sizeof(buf), 0, 1);
 				}
 			}
@@ -6832,7 +6856,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_SignFinal)(CK_SESSION_HANDLE hSession, CK_BYTE_PTR p
 			sigbuflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].sign_identity, cackey_sessions[hSession].sign_buf, cackey_sessions[hSession].sign_bufused, sigbuf, sizeof(sigbuf), 1, 0);
 
 			if (sigbuflen == CACKEY_PCSC_E_NEEDLOGIN && cackey_pin_command != NULL) {
-				if (C_Login(hSession, CKU_USER, NULL, 0) == CKR_OK) {
+				if (_C_LoginMutexArg(hSession, CKU_USER, NULL, 0, 0) == CKR_OK) {
 					sigbuflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].sign_identity, cackey_sessions[hSession].sign_buf, cackey_sessions[hSession].sign_bufused, sigbuf, sizeof(sigbuf), 1, 0);
 				}
 			}
