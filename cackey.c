@@ -870,6 +870,15 @@ struct cackey_pcsc_identity extra_certs[] = {
 #include "cackey_builtin_certs.h"
 };
 
+/* Protected Authentication Path command */
+#ifdef CACKEY_PIN_COMMAND_DEFAULT
+#  define CACKEY_PIN_COMMAND_DEFAULT_XSTR(str) CACKEY_PIN_COMMAND_DEFAULT_STR(str)
+#  define CACKEY_PIN_COMMAND_DEFAULT_STR(str) #str
+static char *cackey_pin_command = CACKEY_PIN_COMMAND_DEFAULT_XSTR(CACKEY_PIN_COMMAND_DEFAULT);
+#else
+static char *cackey_pin_command = NULL;
+#endif
+
 /* PCSC Global Handles */
 static LPSCARDCONTEXT cackey_pcsc_handle = NULL;
 
@@ -3051,6 +3060,13 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 		memcpy(cac_pin, pin, pin_len);
 	}
 
+	/* Reject PINs which are too short */
+	if (pin_len < 5) {
+		CACKEY_DEBUG_PRINTF("Rejecting PIN which is too short (length = %lu, must be atleast 5)", pin_len);
+
+		return(CACKEY_PCSC_E_BADPIN);
+	}
+
 	/* PIV authentication uses a "key_reference" of 0x80 */
 	pcsc_identities = cackey_read_certs(slot, NULL, &num_certs);
 	if (num_certs > 0 && pcsc_identities != NULL) {
@@ -4118,6 +4134,11 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 		cackey_biglock_init = 1;
 	}
 
+	/* Define a command to prompt user for a PIN */
+	if (getenv("CACKEY_PIN_COMMAND") != NULL) {
+		cackey_pin_command = getenv("CACKEY_PIN_COMMAND");
+	}
+
 	CACKEY_DEBUG_PRINTF("Returning CKR_OK (%i)", CKR_OK);
 
 	return(CKR_OK);
@@ -4650,6 +4671,10 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetTokenInfo)(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR p
 
 	pInfo->flags = CKF_WRITE_PROTECTED | CKF_USER_PIN_INITIALIZED | CKF_TOKEN_INITIALIZED | cackey_slots[slotID].token_flags;
 
+	if (cackey_pin_command != NULL) {
+		pInfo->flags |= CKF_PROTECTED_AUTHENTICATION_PATH;
+	}
+
 	pInfo->ulMaxSessionCount = (sizeof(cackey_sessions) / sizeof(cackey_sessions[0])) - 1;
 	pInfo->ulSessionCount = CK_UNAVAILABLE_INFORMATION;
 	pInfo->ulMaxRwSessionCount = 0;
@@ -5112,9 +5137,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_SetOperationState)(CK_SESSION_HANDLE hSession, CK_BY
 
 CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen) {
 	CK_SLOT_ID slotID;
+	FILE *pinfd;
+	char *pincmd, pinbuf[64], *fgets_ret;
 	int mutex_retval;
 	int tries_remaining;
 	int login_ret;
+	int pclose_ret;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -5165,6 +5193,57 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		cackey_mutex_unlock(cackey_biglock);
 
 		return(CKR_GENERAL_ERROR);
+	}
+
+	pincmd = cackey_pin_command;
+	if (pincmd != NULL) {
+		CACKEY_DEBUG_PRINTF("CACKEY_PIN_COMMAND = %s", pincmd);
+
+		if (pPin != NULL) {
+			CACKEY_DEBUG_PRINTF("Error.  Protected authentication path in effect and PIN provided !?");
+
+			cackey_mutex_unlock(cackey_biglock);
+
+			return(CKR_GENERAL_ERROR);
+		}
+
+		pinfd = popen(pincmd, "r");
+		if (pinfd == NULL) {
+			CACKEY_DEBUG_PRINTF("Error.  %s: Unable to run", pincmd);
+
+			cackey_mutex_unlock(cackey_biglock);
+
+			return(CKR_PIN_INCORRECT);
+		}
+
+		fgets_ret = fgets(pinbuf, sizeof(pinbuf), pinfd);
+		if (fgets_ret == NULL) {
+			pinbuf[0] = '\0';
+		}
+
+		pclose_ret = pclose(pinfd);
+		if (pclose_ret != 0) {
+			CACKEY_DEBUG_PRINTF("Error.  %s: exited with non-zero status of %i", pincmd, pclose_ret);
+
+			cackey_mutex_unlock(cackey_biglock);
+
+			return(CKR_PIN_INCORRECT);
+		}
+
+		if (strlen(pinbuf) < 1) {
+			CACKEY_DEBUG_PRINTF("Error.  %s: returned no data", pincmd);
+
+			cackey_mutex_unlock(cackey_biglock);
+
+			return(CKR_PIN_INCORRECT);
+		}
+
+		if (pinbuf[strlen(pinbuf) - 1] == '\n') {
+			pinbuf[strlen(pinbuf) - 1] = '\0';
+		}
+
+		pPin = (CK_UTF8CHAR_PTR) pinbuf;
+		ulPinLen = strlen(pinbuf);
 	}
 
 	login_ret = cackey_login(&cackey_slots[slotID], pPin, ulPinLen, &tries_remaining);

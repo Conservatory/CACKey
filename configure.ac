@@ -154,6 +154,17 @@ if ! test "${dodcertsonhwslots}" = 'no'; then
 	AC_DEFINE(CACKEY_CARD_SLOT_INCLUDE_EXTRA_CERTS, [1], [Specify that DoD certificates should be made available on hardware token slots])
 fi
 
+dnl Option to hard-code a command to run to request a PIN (enabling protected authentication path)
+AC_ARG_WITH(pin-command, AC_HELP_STRING([--with-pin-command=<command>], [Specify a command to run to request a PIN from the user.  The user may override this with the CACKEY_PIN_COMMAND environment variable.]), [
+	pincommand="${withval}"
+], [
+	pincommand="no"
+])
+
+if ! test "${pincommand}" = 'no'; then
+	AC_DEFINE_UNQUOTED(CACKEY_PIN_COMMAND_DEFAULT, [$pincommand], [Command to run to prompt user for PIN])
+fi
+
 dnl Set version script, to limit the scope of symbols
 DC_SETVERSIONSCRIPT(libcackey.vers, libcackey.syms)
 
