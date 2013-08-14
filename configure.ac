@@ -161,8 +161,18 @@ AC_ARG_WITH(pin-command, AC_HELP_STRING([--with-pin-command=<command>], [Specify
 	pincommand="no"
 ])
 
+AC_ARG_WITH(pin-command-x, AC_HELP_STRING([--with-pin-command-x=<command>], [Same as --with-pin-command, but only sets Protected Authentication Path if the DISPLAY environment variable is set]), [
+	pincommandxonly="${withval}"
+], [
+	pincommandxonly="no"
+])
+
 if ! test "${pincommand}" = 'no'; then
 	AC_DEFINE_UNQUOTED(CACKEY_PIN_COMMAND_DEFAULT, [$pincommand], [Command to run to prompt user for PIN])
+fi
+
+if ! test "${pincommandxonly}" = 'no'; then
+	AC_DEFINE_UNQUOTED(CACKEY_PIN_COMMAND_XONLY_DEFAULT, [$pincommandxonly], [Command to run to prompt user for PIN only if DISPLAY environment variable is set])
 fi
 
 dnl Set version script, to limit the scope of symbols

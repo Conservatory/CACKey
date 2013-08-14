@@ -871,13 +871,10 @@ struct cackey_pcsc_identity extra_certs[] = {
 };
 
 /* Protected Authentication Path command */
-#ifdef CACKEY_PIN_COMMAND_DEFAULT
-#  define CACKEY_PIN_COMMAND_DEFAULT_XSTR(str) CACKEY_PIN_COMMAND_DEFAULT_STR(str)
-#  define CACKEY_PIN_COMMAND_DEFAULT_STR(str) #str
-static char *cackey_pin_command = CACKEY_PIN_COMMAND_DEFAULT_XSTR(CACKEY_PIN_COMMAND_DEFAULT);
-#else
+#define CACKEY_PIN_COMMAND_DEFAULT_XSTR(str) CACKEY_PIN_COMMAND_DEFAULT_STR(str)
+#define CACKEY_PIN_COMMAND_DEFAULT_STR(str) #str
 static char *cackey_pin_command = NULL;
-#endif
+static char *cackey_pin_command_xonly = NULL;
 
 /* PCSC Global Handles */
 static LPSCARDCONTEXT cackey_pcsc_handle = NULL;
@@ -4135,6 +4132,21 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 	}
 
 	/* Define a command to prompt user for a PIN */
+#ifdef CACKEY_PIN_COMMAND_DEFAULT
+	cackey_pin_command = CACKEY_PIN_COMMAND_DEFAULT_XSTR(CACKEY_PIN_COMMAND_DEFAULT);
+#endif
+#ifdef CACKEY_PIN_COMMAND_XONLY_DEFAULT
+	cackey_pin_command_xonly = CACKEY_PIN_COMMAND_DEFAULT_XSTR(CACKEY_PIN_COMMAND_XONLY_DEFAULT);
+#endif
+
+	if (getenv("DISPLAY") != NULL) {
+		cackey_pin_command = cackey_pin_command_xonly;
+	}
+
+	if (getenv("CACKEY_PIN_COMMAND_XONLY") != NULL && getenv("DISPLAY") != NULL) {
+		cackey_pin_command = getenv("CACKEY_PIN_COMMAND_XONLY");
+	}
+
 	if (getenv("CACKEY_PIN_COMMAND") != NULL) {
 		cackey_pin_command = getenv("CACKEY_PIN_COMMAND");
 	}
