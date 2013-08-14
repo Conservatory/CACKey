@@ -5212,11 +5212,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		CACKEY_DEBUG_PRINTF("CACKEY_PIN_COMMAND = %s", pincmd);
 
 		if (pPin != NULL) {
-			CACKEY_DEBUG_PRINTF("Error.  Protected authentication path in effect and PIN provided !?");
-
-			cackey_mutex_unlock(cackey_biglock);
-
-			return(CKR_GENERAL_ERROR);
+			CACKEY_DEBUG_PRINTF("Protected authentication path in effect and PIN provided !?");
 		}
 
 		pinfd = popen(pincmd, "r");
@@ -5224,6 +5220,8 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 			CACKEY_DEBUG_PRINTF("Error.  %s: Unable to run", pincmd);
 
 			cackey_mutex_unlock(cackey_biglock);
+
+			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
 
 			return(CKR_PIN_INCORRECT);
 		}
@@ -5239,6 +5237,8 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 
 			cackey_mutex_unlock(cackey_biglock);
 
+			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
+
 			return(CKR_PIN_INCORRECT);
 		}
 
@@ -5246,6 +5246,8 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 			CACKEY_DEBUG_PRINTF("Error.  %s: returned no data", pincmd);
 
 			cackey_mutex_unlock(cackey_biglock);
+
+			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
 
 			return(CKR_PIN_INCORRECT);
 		}
@@ -5267,6 +5269,8 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 
 			cackey_slots[slotID].token_flags |= CKF_USER_PIN_LOCKED;
 
+			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_LOCKED (%i)", (int) CKR_PIN_LOCKED);
+
 			return(CKR_PIN_LOCKED);
 		} else if (login_ret == CACKEY_PCSC_E_BADPIN) {
 			CACKEY_DEBUG_PRINTF("Error.  Invalid PIN.");
@@ -5276,6 +5280,8 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 			if (tries_remaining == 1) {
 				cackey_slots[slotID].token_flags |= CKF_USER_PIN_FINAL_TRY;
 			}
+
+			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
 
 			return(CKR_PIN_INCORRECT);
 		}
