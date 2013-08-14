@@ -3960,7 +3960,7 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 	struct cackey_identity *identities;
 	unsigned long num_ids, id_idx, curr_id_type;
 	unsigned long num_certs, num_dod_certs, cert_idx;
-	int include_extra_certs = 0;
+	int include_extra_certs = 0, include_dod_certs;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -3982,10 +3982,24 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 		include_extra_certs = 0;
 	}
 
-	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
-		num_dod_certs = 0;
+#ifdef CACKEY_NO_EXTRA_CERTS
+	if (getenv("CACKEY_EXTRA_CERTS") != NULL) {
+		include_dod_certs = 1;
 	} else {
+		include_dod_certs = 0;
+	}
+#else
+	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
+		include_dod_certs = 0;
+	} else {
+		include_dod_certs = 1;
+	}
+#endif
+
+	if (include_dod_certs) {
 		num_dod_certs = sizeof(extra_certs) / sizeof(extra_certs[0]);
+	} else {
+		num_dod_certs = 0;
 	}
 
 	if (slot->internal) {
