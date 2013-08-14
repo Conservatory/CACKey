@@ -271,6 +271,12 @@ static FILE *cackey_debug_fd(void) {
 		}
 	}
 
+#ifdef CACKEY_DEBUG_LOGFILE
+	if (logfile == NULL) {
+		logfile = CACKEY_DEBUG_LOGFILE;
+	}
+#endif
+
 	if (logfile != NULL) {
 		CACKEY_DEBUG_PRINTF("Found log file: %s", logfile);
 
