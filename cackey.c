@@ -4080,6 +4080,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 	CK_C_INITIALIZE_ARGS CK_PTR args;
 	uint32_t idx, highest_slot;
 	int mutex_init_ret;
+	int include_dod_certs;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -4123,7 +4124,21 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 		cackey_slots[idx].internal = 0;
 	}
 
+#ifdef CACKEY_NO_EXTRA_CERTS
+	if (getenv("CACKEY_EXTRA_CERTS") != NULL) {
+		include_dod_certs = 1;
+	} else {
+		include_dod_certs = 0;
+	}
+#else
 	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
+		include_dod_certs = 0;
+	} else {
+		include_dod_certs = 1;
+	}
+#endif
+
+	if (include_dod_certs == 0) {
 		CACKEY_DEBUG_PRINTF("Asked not to include DoD certificates");
 	} else {
 		highest_slot = (sizeof(cackey_slots) / sizeof(cackey_slots[0])) - 1;
