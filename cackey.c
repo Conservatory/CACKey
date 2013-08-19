@@ -2453,7 +2453,6 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 			if (certs == NULL) {
 				certs = malloc(sizeof(*certs) * slot->cached_certs_count);
 				*count = slot->cached_certs_count;
-
 			} else {
 				if (*count > slot->cached_certs_count) {
 					*count = slot->cached_certs_count;
@@ -3082,6 +3081,8 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 			default:
 				break;
 		}
+
+		cackey_free_certs(pcsc_identities, num_certs, 1);
 	}
 
 	/* Issue PIN Verify */
