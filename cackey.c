@@ -2868,8 +2868,8 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 			/* End transaction */
 			cackey_end_transaction(slot);
 
-			if (respcode == 0x6982) {
-				CACKEY_DEBUG_PRINTF("Security status not satisified.  Returning NEEDLOGIN");
+			if (respcode == 0x6982 || respcode == 0x6e00) {
+				CACKEY_DEBUG_PRINTF("Security status not satisified (respcode = 0x%04x).  Returning NEEDLOGIN", (int) respcode);
 
 				cackey_mark_slot_reset(slot);
 				slot->token_flags = CKF_LOGIN_REQUIRED;
