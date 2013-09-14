@@ -880,7 +880,6 @@ struct cackey_pcsc_identity extra_certs[] = {
 #define CACKEY_PIN_COMMAND_DEFAULT_XSTR(str) CACKEY_PIN_COMMAND_DEFAULT_STR(str)
 #define CACKEY_PIN_COMMAND_DEFAULT_STR(str) #str
 static char *cackey_pin_command = NULL;
-static char *cackey_pin_command_xonly = NULL;
 
 /* PCSC Global Handles */
 static LPSCARDCONTEXT cackey_pcsc_handle = NULL;
@@ -2457,7 +2456,6 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 			if (certs == NULL) {
 				certs = malloc(sizeof(*certs) * slot->cached_certs_count);
 				*count = slot->cached_certs_count;
-
 			} else {
 				if (*count > slot->cached_certs_count) {
 					*count = slot->cached_certs_count;
@@ -2875,7 +2873,7 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 			cackey_end_transaction(slot);
 
 			if (respcode == 0x6982 || respcode == 0x6e00) {
-				CACKEY_DEBUG_PRINTF("Security status not satisified.  Returning NEEDLOGIN");
+				CACKEY_DEBUG_PRINTF("Security status not satisified (respcode = 0x%04x).  Returning NEEDLOGIN", (int) respcode);
 
 				cackey_mark_slot_reset(slot);
 
@@ -3085,6 +3083,8 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 			default:
 				break;
 		}
+
+		cackey_free_certs(pcsc_identities, num_certs, 1);
 	}
 
 	/* Issue PIN Verify */
@@ -4083,6 +4083,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 	CK_C_INITIALIZE_ARGS CK_PTR args;
 	uint32_t idx, highest_slot;
 	int mutex_init_ret;
+	int include_dod_certs;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -4126,7 +4127,21 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 		cackey_slots[idx].internal = 0;
 	}
 
+#ifdef CACKEY_NO_EXTRA_CERTS
+	if (getenv("CACKEY_EXTRA_CERTS") != NULL) {
+		include_dod_certs = 1;
+	} else {
+		include_dod_certs = 0;
+	}
+#else
 	if (getenv("CACKEY_NO_EXTRA_CERTS") != NULL) {
+		include_dod_certs = 0;
+	} else {
+		include_dod_certs = 1;
+	}
+#endif
+
+	if (include_dod_certs == 0) {
 		CACKEY_DEBUG_PRINTF("Asked not to include DoD certificates");
 	} else {
 		highest_slot = (sizeof(cackey_slots) / sizeof(cackey_slots[0])) - 1;
@@ -4158,20 +4173,19 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 #ifdef CACKEY_PIN_COMMAND_DEFAULT
 	cackey_pin_command = CACKEY_PIN_COMMAND_DEFAULT_XSTR(CACKEY_PIN_COMMAND_DEFAULT);
 #endif
+
 #ifdef CACKEY_PIN_COMMAND_XONLY_DEFAULT
-	cackey_pin_command_xonly = CACKEY_PIN_COMMAND_DEFAULT_XSTR(CACKEY_PIN_COMMAND_XONLY_DEFAULT);
+	if (getenv("DISPLAY") != NULL) {
+		cackey_pin_command = CACKEY_PIN_COMMAND_DEFAULT_XSTR(CACKEY_PIN_COMMAND_XONLY_DEFAULT);
+	}
 #endif
 
-	if (getenv("DISPLAY") != NULL) {
-		cackey_pin_command = cackey_pin_command_xonly;
+	if (getenv("CACKEY_PIN_COMMAND") != NULL) {
+		cackey_pin_command = getenv("CACKEY_PIN_COMMAND");
 	}
 
 	if (getenv("CACKEY_PIN_COMMAND_XONLY") != NULL && getenv("DISPLAY") != NULL) {
 		cackey_pin_command = getenv("CACKEY_PIN_COMMAND_XONLY");
-	}
-
-	if (getenv("CACKEY_PIN_COMMAND") != NULL) {
-		cackey_pin_command = getenv("CACKEY_PIN_COMMAND");
 	}
 
 	CACKEY_DEBUG_PRINTF("Returning CKR_OK (%i)", CKR_OK);
