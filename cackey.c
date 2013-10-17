@@ -2877,6 +2877,15 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 				return(CACKEY_PCSC_E_NEEDLOGIN);
 			}
 
+			if (respcode == 0x6E00) {
+				CACKEY_DEBUG_PRINTF("Got \"WRONG CLASS\", this means we are talking to the wrong object (likely because the card went away) -- resetting");
+
+				cackey_mark_slot_reset(slot);
+				slot->token_flags = CKF_LOGIN_REQUIRED;
+
+				return(CACKEY_PCSC_E_NEEDLOGIN);
+			}
+
 			if (send_ret == CACKEY_PCSC_E_TOKENABSENT) {
 				CACKEY_DEBUG_PRINTF("Token absent.  Returning TOKENABSENT");
 
@@ -3073,7 +3082,7 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 	if (num_certs > 0 && pcsc_identities != NULL) {
 		switch (pcsc_identities[0].id_type) {
 			case CACKEY_ID_TYPE_PIV:
-				CACKEY_DEBUG_PRINTF("We recently had a PIV card, so we will attempt to authenticate using the PIV Application key reference");
+				CACKEY_DEBUG_PRINTF("We have PIV card, so we will attempt to authenticate using the PIV Application key reference");
 
 				key_reference = 0x80;
 				break;
