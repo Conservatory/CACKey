@@ -335,7 +335,7 @@ int main_pkcs11(void) {
 			return(1);
 		}
 
-		if ((tokenInfo.flags & CKF_LOGIN_REQUIRED) == CKF_LOGIN_REQUIRED) {
+		if ((tokenInfo.flags & CKF_LOGIN_REQUIRED) == CKF_LOGIN_REQUIRED && (tokenInfo.flags & CKF_PROTECTED_AUTHENTICATION_PATH) == 0) {
 			fgets_ret = NULL;
 
 			while (fgets_ret == NULL) {

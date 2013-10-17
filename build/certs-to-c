@@ -1,0 +1,27 @@
+#! /bin/bash
+
+for file in "$@"; do
+	rm -f tmpfile.x509
+	if ! openssl x509 -in "${file}" -inform pem -noout -checkend 0 >/dev/null 2>/dev/null; then
+		echo "warning: Skipping \"${file}\" as it is invalid or expired." >&2
+
+		continue
+	fi
+
+	openssl x509 -in "${file}" -out tmpfile.x509 -inform pem -outform der
+
+	pubkeylen="$(openssl x509 -in tmpfile.x509 -inform der -text -noout | grep 'RSA Public Key:' | sed 's@^.*(\([0-9][0-9]*\) bit).*$@\1@')"
+	certlen="$(cat tmpfile.x509 | wc -c)"
+	cert="$(( cat tmpfile.x509 | od -t x1 | cut -c 9- | tr "\n" ' '; echo ) | sed 's@ @@g;s@..@\\x&@g')"
+
+	cat << _EOF_
+	{
+		CACKEY_ID_TYPE_CERT_ONLY, /* id_type */
+		${certlen}, /* certificate_len */
+		(unsigned char *) "${cert}", /* certificate */
+		${pubkeylen} /* keysize */
+	},
+_EOF_
+done
+
+rm -f tmpfile.x509
