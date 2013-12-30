@@ -70,7 +70,7 @@ leopard() {
 	DARCHLIST=""
 	OSX=Leopard
 	PKTARGETOS=3
-	THISOSXVER=10.5
+	THISOSXVER=10.5.99
 	CUROSXVER=10.5
 	for HOST in powerpc-apple-darwin9 i386-apple-darwin9; do
 		genbuild
@@ -90,7 +90,7 @@ snowleopard() {
 	DARCHLIST=""
 	OSX=Snowleopard
 	PKTARGETOS=3
-	THISOSXVER=10.6
+	THISOSXVER=10.6.99
 	CUROSXVER=10.6
 	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
 		genbuild
@@ -110,7 +110,7 @@ lion() {
 	DARCHLIST=""
 	OSX=Lion
 	PKTARGETOS=3
-	THISOSXVER=10.7
+	THISOSXVER=10.7.99
 	CUROSXVER=10.7
 	for HOST in i386-apple-darwin11 x86_64-apple-darwin11; do
 		genbuild
@@ -130,7 +130,7 @@ sltomav() {
 	DARCHLIST=""
 	OSX=Sltomav
 	PKTARGETOS=3
-	THISOSXVER=10.9
+	THISOSXVER=10.9.99
 	CUROSXVER=10.6
 	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
 		genbuild
@@ -150,7 +150,7 @@ sltomav() {
 	DARCHLIST=""
 	OSX=Sltomav
 	PKTARGETOS=3
-	THISOSXVER=10.9
+	THISOSXVER=10.9.99
 	CUROSXVER=10.6
 	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
 		genbuild
