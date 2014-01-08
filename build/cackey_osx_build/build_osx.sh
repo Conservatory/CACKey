@@ -70,7 +70,6 @@ leopard() {
 	DARCHLIST=""
 	OSX=Leopard
 	PKTARGETOS=3
-	THISOSXVER=10.5.99
 	CUROSXVER=10.5
 	for HOST in powerpc-apple-darwin9 i386-apple-darwin9; do
 		genbuild
@@ -90,7 +89,6 @@ snowleopard() {
 	DARCHLIST=""
 	OSX=Snowleopard
 	PKTARGETOS=3
-	THISOSXVER=10.6.99
 	CUROSXVER=10.6
 	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
 		genbuild
@@ -110,7 +108,6 @@ lion() {
 	DARCHLIST=""
 	OSX=Lion
 	PKTARGETOS=3
-	THISOSXVER=10.7.99
 	CUROSXVER=10.7
 	for HOST in i386-apple-darwin11 x86_64-apple-darwin11; do
 		genbuild
@@ -130,7 +127,6 @@ sltomav() {
 	DARCHLIST=""
 	OSX=Sltomav
 	PKTARGETOS=3
-	THISOSXVER=10.9.99
 	CUROSXVER=10.6
 	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
 		genbuild
@@ -150,7 +146,6 @@ sltomav() {
 	DARCHLIST=""
 	OSX=Sltomav
 	PKTARGETOS=3
-	THISOSXVER=10.9.99
 	CUROSXVER=10.6
 	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
 		genbuild
@@ -227,7 +222,6 @@ pkgbuild() {
 		sed "s|@@OSXVERSION@@|${OSX}|g" build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC} > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}.1
 		sed "s|@@UUID@@|${UUID}|g" build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}.1 > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}
 		sed "s|@@TARGETOS@@|${PKTARGETOS}|g" build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC} > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}.1
-		sed "s|@@THISOSXVER@@|${THISOSXVER}|g" build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}.1 > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}
 		sed "s|@@CUROSXVER@@|${CUROSXVER}|g" build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC} > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}.1
 		sed "s|@@LIBCACKEYG@@|${LIBCACKEYG}|g" build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}.1 > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}
 		cp build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC} build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}.1
