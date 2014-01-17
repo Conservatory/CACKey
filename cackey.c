@@ -2873,7 +2873,11 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 			cackey_end_transaction(slot);
 
 			if (respcode == 0x6982 || respcode == 0x6e00) {
-				CACKEY_DEBUG_PRINTF("Security status not satisified (respcode = 0x%04x).  Returning NEEDLOGIN", (int) respcode);
+				if (respcode == 0x6E00) {
+					CACKEY_DEBUG_PRINTF("Got \"WRONG CLASS\", this means we are talking to the wrong object (likely because the card went away) -- resetting");
+				} else {
+					CACKEY_DEBUG_PRINTF("Security status not satisified (respcode = 0x%04x).  Returning NEEDLOGIN", (int) respcode);
+				}
 
 				cackey_mark_slot_reset(slot);
 
@@ -3076,7 +3080,7 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 	if (num_certs > 0 && pcsc_identities != NULL) {
 		switch (pcsc_identities[0].id_type) {
 			case CACKEY_ID_TYPE_PIV:
-				CACKEY_DEBUG_PRINTF("We recently had a PIV card, so we will attempt to authenticate using the PIV Application key reference");
+				CACKEY_DEBUG_PRINTF("We have PIV card, so we will attempt to authenticate using the PIV Application key reference");
 
 				key_reference = 0x80;
 				break;
@@ -4428,7 +4432,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 						break;
 					}
 
-					CACKEY_DEBUG_PRINTF("Found reader: %s", pcsc_readers);
+					CACKEY_DEBUG_PRINTF("Found reader: %s (currslot = %lu)", pcsc_readers, (unsigned long) currslot);
 
 					/* Only update the list of slots if we are actually being asked supply the slot information */
 					if (pSlotList) {
@@ -4449,8 +4453,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 							cackey_mark_slot_reset(&cackey_slots[currslot]);
 						}
 					} else {
-						/* Artificially increase the number of active slots by what will become active */
-						slot_count++;
+						if (!cackey_slots[currslot].active) {
+							/* Artificially increase the number of active slots by what will become active */
+							CACKEY_DEBUG_PRINTF("Found in-active slot %lu, but it will be active after a reset -- marking as active for accounting purposes", (unsigned long) currslot);
+
+							slot_count++;
+						}
 					}
 					currslot++;
 
@@ -4459,7 +4467,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 
 				for (currslot = 0; currslot < (sizeof(cackey_slots) / sizeof(cackey_slots[0])); currslot++) {
 					if (cackey_slots[currslot].active) {
-						CACKEY_DEBUG_PRINTF("Found active slot %lu", (unsigned long) currslot);
+						CACKEY_DEBUG_PRINTF("Found active slot %lu, reader = %s", (unsigned long) currslot, cackey_slots[currslot].pcsc_reader);
 
 						slot_count++;
 					}

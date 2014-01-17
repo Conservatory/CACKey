@@ -34,7 +34,7 @@
 \f0\fs26 \cf0 Release information:\
     pkg: CACKey\
  author: US Army Corps of Engineers\
-Mac build contact: Kenneth Van Alstyne <DC1SAN_SUPPORT@hq.dhs.gov>\
+Mac build contact: Kenneth Van Alstyne <Kenneth.VanAlstyne@associates.hq.dhs.gov>\
                    US Department of Homeland Security\
 contact: Roy Keene <DC1-UNIX@hq.dhs.gov>\
 ------------------------------------------------\
@@ -79,9 +79,6 @@ A debug version, /Library/CACKey/libcackey_g.dylib is provided if debug output i
 		</locale>
 	</resources>
 	<requirements>
-		<requirement id="tosv" operator="lt" value="'@@NEXTOSXVER@@'">
-			<message>This CACKey release requires Mac OS X @@CUROSXVER@@.</message>
-		</requirement>
 		<requirement id="tosv" operator="ge" value="'@@CUROSXVER@@'">
 			<message>This CACKey release requires Mac OS X @@CUROSXVER@@.</message>
 		</requirement>
