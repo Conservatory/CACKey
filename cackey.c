@@ -1117,7 +1117,11 @@ static void cackey_mark_slot_reset(struct cackey_slot *slot) {
 
 	slot->slot_reset = 1;
 	slot->pcsc_card_connected = 0;
-	slot->token_flags = CKF_LOGIN_REQUIRED;
+	if (cackey_pin_command == NULL) {
+		slot->token_flags = CKF_LOGIN_REQUIRED;
+	} else {
+		slot->token_flags = 0;
+	}
 
 	CACKEY_DEBUG_PRINTF("Returning.");
 
@@ -1126,7 +1130,7 @@ static void cackey_mark_slot_reset(struct cackey_slot *slot) {
 
 /*
  * SYNPOSIS
- *     LONG cackey_reconnect_card(struct cackey_slot *slot, DWORD default_protocol, LPDWORD selected_protocol);
+ *     LONG cackey_reconnect_card(struct cackey_slot *slot, DWORD default_protocol);
  *
  * ARGUMENTS
  *     cackey_slot *slot
@@ -1134,9 +1138,6 @@ static void cackey_mark_slot_reset(struct cackey_slot *slot) {
  *
  *     DWORD default_protocol
  *         Protocol to attempt first
- *
- *     LPDWORD selected_protocol
- *         [OUT] Protocol selected
  *
  * RETURN VALUE
  *     The return value from SCardReconnect()
@@ -1150,19 +1151,26 @@ static void cackey_mark_slot_reset(struct cackey_slot *slot) {
  *     that T=1.
  *
  */
-static LONG cackey_reconnect_card(struct cackey_slot *slot, DWORD default_protocol, LPDWORD selected_protocol) {
+static LONG cackey_reconnect_card(struct cackey_slot *slot, DWORD default_protocol) {
+	DWORD selected_protocol;
 	LONG scard_conn_ret;
 
-	scard_conn_ret = SCardReconnect(slot->pcsc_card, SCARD_SHARE_SHARED, default_protocol, SCARD_RESET_CARD, selected_protocol);
+	selected_protocol = 0;
+
+	scard_conn_ret = SCardReconnect(slot->pcsc_card, SCARD_SHARE_SHARED, default_protocol, SCARD_RESET_CARD, &selected_protocol);
 
 	if (scard_conn_ret == SCARD_E_PROTO_MISMATCH) {
 		CACKEY_DEBUG_PRINTF("SCardReconnect() returned SCARD_E_PROTO_MISMATCH, trying with just T=0")
-		scard_conn_ret = SCardReconnect(slot->pcsc_card, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T0, SCARD_RESET_CARD, selected_protocol);
+		scard_conn_ret = SCardReconnect(slot->pcsc_card, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T0, SCARD_RESET_CARD, &selected_protocol);
 
 		if (scard_conn_ret == SCARD_E_PROTO_MISMATCH) {
 			CACKEY_DEBUG_PRINTF("SCardReconnect() returned SCARD_E_PROTO_MISMATCH, trying with just T=1")
-			scard_conn_ret = SCardReconnect(slot->pcsc_card, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T1, SCARD_RESET_CARD, selected_protocol);
+			scard_conn_ret = SCardReconnect(slot->pcsc_card, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T1, SCARD_RESET_CARD, &selected_protocol);
 		}
+	}
+
+	if (scard_conn_ret == SCARD_S_SUCCESS) {
+		slot->protocol = selected_protocol;
 	}
 
 	return(scard_conn_ret);
@@ -1234,7 +1242,7 @@ static cackey_ret cackey_connect_card(struct cackey_slot *slot) {
 				}
 			}
 
-			scard_conn_ret = cackey_reconnect_card(slot, protocol, &protocol);
+			scard_conn_ret = cackey_reconnect_card(slot, protocol);
 		}
 
 		if (scard_conn_ret != SCARD_S_SUCCESS) {
@@ -1441,7 +1449,6 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 	uint8_t major_rc, minor_rc;
 	size_t bytes_to_copy, tmp_respdata_len;
 	LPCSCARD_IO_REQUEST pioSendPci;
-	DWORD protocol;
 	DWORD xmit_len, recv_len;
 	LONG scard_xmit_ret, scard_reconn_ret;
 	BYTE xmit_buf[1024], recv_buf[1024];
@@ -1536,6 +1543,8 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 		/* Begin Smartcard Transaction */
 		cackey_end_transaction(slot);
 
+		cackey_reconnect_card(slot, slot->protocol);
+
 		return(CACKEY_PCSC_E_RETRY);
 	}
 
@@ -1548,11 +1557,9 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 		if (scard_xmit_ret == SCARD_W_RESET_CARD) {
 			CACKEY_DEBUG_PRINTF("Reset required, please hold...");
 
-			scard_reconn_ret = cackey_reconnect_card(slot, SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1, &protocol);
+			scard_reconn_ret = cackey_reconnect_card(slot, SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1);
 
 			if (scard_reconn_ret == SCARD_S_SUCCESS) {
-				/* Update protocol */
-				slot->protocol = protocol;
 				switch (slot->protocol) {
 					case SCARD_PROTOCOL_T0:
 						pioSendPci = SCARD_PCI_T0;
@@ -2857,8 +2864,6 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 		}
 
 		if (send_ret != CACKEY_PCSC_S_OK) {
-			CACKEY_DEBUG_PRINTF("ADPU Sending Failed -- returning in error.");
-
 			if (free_tmpbuf) {
 				if (tmpbuf_s) {
 					free(tmpbuf_s);
@@ -2868,10 +2873,24 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 			/* End transaction */
 			cackey_end_transaction(slot);
 
+			if (send_ret == CACKEY_PCSC_E_RETRY) {
+				CACKEY_DEBUG_PRINTF("ADPU Sending Failed -- retrying.");
+
+				return(cackey_signdecrypt(slot, identity, buf, buflen, outbuf, outbuflen, padInput, unpadOutput));
+			}
+
+			CACKEY_DEBUG_PRINTF("ADPU Sending Failed -- returning in error.");
+
 			if (respcode == 0x6982 || respcode == 0x6e00) {
-				CACKEY_DEBUG_PRINTF("Security status not satisified (respcode = 0x%04x).  Returning NEEDLOGIN", (int) respcode);
+				if (respcode == 0x6E00) {
+					CACKEY_DEBUG_PRINTF("Got \"WRONG CLASS\", this means we are talking to the wrong object (likely because the card went away) -- resetting");
+				} else {
+					CACKEY_DEBUG_PRINTF("Security status not satisified (respcode = 0x%04x).  Returning NEEDLOGIN", (int) respcode);
+				}
 
 				cackey_mark_slot_reset(slot);
+
+				slot->token_flags = CKF_LOGIN_REQUIRED;
 
 				return(CACKEY_PCSC_E_NEEDLOGIN);
 			}
@@ -3184,11 +3203,8 @@ static cackey_ret cackey_token_present(struct cackey_slot *slot) {
 		if (status_ret == SCARD_W_RESET_CARD) {
 			CACKEY_DEBUG_PRINTF("Reset required, please hold...");
 
-			scard_reconn_ret = cackey_reconnect_card(slot, SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1, &protocol);
+			scard_reconn_ret = cackey_reconnect_card(slot, SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1);
 			if (scard_reconn_ret == SCARD_S_SUCCESS) {
-				/* Update protocol */
-				slot->protocol = protocol;
-
 				/* Re-establish transaction, if it was present */
 				if (slot->transaction_depth > 0) {
 					slot->transaction_depth--;
@@ -4443,7 +4459,11 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 							cackey_slots[currslot].pcsc_card_connected = 0;
 							cackey_slots[currslot].transaction_depth = 0;
 							cackey_slots[currslot].transaction_need_hw_lock = 0;
-							cackey_slots[currslot].token_flags = CKF_LOGIN_REQUIRED;
+							if (cackey_pin_command == NULL) {
+								cackey_slots[currslot].token_flags = CKF_LOGIN_REQUIRED;
+							} else {
+								cackey_slots[currslot].token_flags = 0;
+							}
 							cackey_slots[currslot].label = NULL;
 
 							cackey_mark_slot_reset(&cackey_slots[currslot]);
@@ -5192,7 +5212,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_SetOperationState)(CK_SESSION_HANDLE hSession, CK_BY
 	return(CKR_FUNCTION_NOT_SUPPORTED);
 }
 
-CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen) {
+CK_DEFINE_FUNCTION(CK_RV, _C_LoginMutexArg)(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen, int lock_mutex) {
 	CK_SLOT_ID slotID;
 	FILE *pinfd;
 	char *pincmd, pinbuf[64], *fgets_ret;
@@ -5221,15 +5241,19 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		return(CKR_USER_TYPE_INVALID);
 	}
 
-	mutex_retval = cackey_mutex_lock(cackey_biglock);
-	if (mutex_retval != 0) {
-		CACKEY_DEBUG_PRINTF("Error.  Locking failed.");
+	if (lock_mutex) {
+		mutex_retval = cackey_mutex_lock(cackey_biglock);
+		if (mutex_retval != 0) {
+			CACKEY_DEBUG_PRINTF("Error.  Locking failed.");
 
-		return(CKR_GENERAL_ERROR);
+			return(CKR_GENERAL_ERROR);
+		}
 	}
 
 	if (!cackey_sessions[hSession].active) {
-		cackey_mutex_unlock(cackey_biglock);
+		if (lock_mutex) {
+			cackey_mutex_unlock(cackey_biglock);
+		}
 
 		CACKEY_DEBUG_PRINTF("Error.  Session not active.");
 		
@@ -5241,13 +5265,19 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 	if (slotID < 0 || slotID >= (sizeof(cackey_slots) / sizeof(cackey_slots[0]))) {
 		CACKEY_DEBUG_PRINTF("Error. Invalid slot requested (%lu), outside of valid range", slotID);
 
+		if (lock_mutex) {
+			cackey_mutex_unlock(cackey_biglock);
+		}
+
 		return(CKR_GENERAL_ERROR);
 	}
 
 	if (cackey_slots[slotID].active == 0) {
 		CACKEY_DEBUG_PRINTF("Error. Invalid slot requested (%lu), slot not currently active", slotID);
 
-		cackey_mutex_unlock(cackey_biglock);
+		if (lock_mutex) {
+			cackey_mutex_unlock(cackey_biglock);
+		}
 
 		return(CKR_GENERAL_ERROR);
 	}
@@ -5264,7 +5294,9 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		if (pinfd == NULL) {
 			CACKEY_DEBUG_PRINTF("Error.  %s: Unable to run", pincmd);
 
-			cackey_mutex_unlock(cackey_biglock);
+			if (lock_mutex) {
+				cackey_mutex_unlock(cackey_biglock);
+			}
 
 			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
 
@@ -5280,7 +5312,9 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		if (pclose_ret != 0) {
 			CACKEY_DEBUG_PRINTF("Error.  %s: exited with non-zero status of %i", pincmd, pclose_ret);
 
-			cackey_mutex_unlock(cackey_biglock);
+			if (lock_mutex) {
+				cackey_mutex_unlock(cackey_biglock);
+			}
 
 			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
 
@@ -5290,7 +5324,9 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 		if (strlen(pinbuf) < 1) {
 			CACKEY_DEBUG_PRINTF("Error.  %s: returned no data", pincmd);
 
-			cackey_mutex_unlock(cackey_biglock);
+			if (lock_mutex) {
+				cackey_mutex_unlock(cackey_biglock);
+			}
 
 			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
 
@@ -5307,7 +5343,9 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 
 	login_ret = cackey_login(&cackey_slots[slotID], pPin, ulPinLen, &tries_remaining);
 	if (login_ret != CACKEY_PCSC_S_OK) {
-		cackey_mutex_unlock(cackey_biglock);
+		if (lock_mutex) {
+			cackey_mutex_unlock(cackey_biglock);
+		}
 
 		if (login_ret == CACKEY_PCSC_E_LOCKED) {
 			CACKEY_DEBUG_PRINTF("Error.  Token is locked.");
@@ -5340,16 +5378,22 @@ CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE user
 
 	cackey_sessions[hSession].state = CKS_RO_USER_FUNCTIONS;
 
-	mutex_retval = cackey_mutex_unlock(cackey_biglock);
-	if (mutex_retval != 0) {
-		CACKEY_DEBUG_PRINTF("Error.  Unlocking failed.");
+	if (lock_mutex) {
+		mutex_retval = cackey_mutex_unlock(cackey_biglock);
+		if (mutex_retval != 0) {
+			CACKEY_DEBUG_PRINTF("Error.  Unlocking failed.");
 
-		return(CKR_GENERAL_ERROR);
+			return(CKR_GENERAL_ERROR);
+		}
 	}
 
 	CACKEY_DEBUG_PRINTF("Returning CKR_OK (%i)", CKR_OK);
 
 	return(CKR_OK);
+}
+
+CK_DEFINE_FUNCTION(CK_RV, C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen) {
+	return(_C_LoginMutexArg(hSession, userType, pPin, ulPinLen, 1));
 }
 
 CK_DEFINE_FUNCTION(CK_RV, C_Logout)(CK_SESSION_HANDLE hSession) {
@@ -5402,7 +5446,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_Logout)(CK_SESSION_HANDLE hSession) {
 	}
 
 	cackey_sessions[hSession].state = CKS_RO_PUBLIC_SESSION;
-	cackey_slots[slotID].token_flags = CKF_LOGIN_REQUIRED;
+
+	if (cackey_pin_command == NULL) {
+		cackey_slots[slotID].token_flags = CKF_LOGIN_REQUIRED;
+	} else {
+		cackey_slots[slotID].token_flags = 0;
+	}
 
 	mutex_retval = cackey_mutex_unlock(cackey_biglock);
 	if (mutex_retval != 0) {
@@ -6327,6 +6376,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_DecryptUpdate)(CK_SESSION_HANDLE hSession, CK_BYTE_P
 			/* Ask card to decrypt */
 			buflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].decrypt_identity, pEncryptedPart, ulEncryptedPartLen, buf, sizeof(buf), 0, 1);
 
+			if (buflen == CACKEY_PCSC_E_NEEDLOGIN && cackey_pin_command != NULL) {
+				if (_C_LoginMutexArg(hSession, CKU_USER, NULL, 0, 0) == CKR_OK) {
+					buflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].decrypt_identity, pEncryptedPart, ulEncryptedPartLen, buf, sizeof(buf), 0, 1);
+				}
+			}
+
 			if (buflen < 0) {
 				/* Decryption failed. */
 				if (buflen == CACKEY_PCSC_E_NEEDLOGIN) {
@@ -6334,6 +6389,8 @@ CK_DEFINE_FUNCTION(CK_RV, C_DecryptUpdate)(CK_SESSION_HANDLE hSession, CK_BYTE_P
 				} else if (buflen == CACKEY_PCSC_E_TOKENABSENT) {
 					retval = CKR_DEVICE_REMOVED;
 				} else {
+					CACKEY_DEBUG_PRINTF("Failed to send APDU, error = %li", (long int) buflen);
+
 					retval = CKR_GENERAL_ERROR;
 				}
 			} else if (((unsigned long) buflen) > *pulPartLen && pPart) {
@@ -6837,6 +6894,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_SignFinal)(CK_SESSION_HANDLE hSession, CK_BYTE_PTR p
 			/* Ask card to sign */
 			CACKEY_DEBUG_PRINTF("Asking to sign from identity %p in session %lu", (void *) cackey_sessions[hSession].sign_identity, (unsigned long) hSession);
 			sigbuflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].sign_identity, cackey_sessions[hSession].sign_buf, cackey_sessions[hSession].sign_bufused, sigbuf, sizeof(sigbuf), 1, 0);
+
+			if (sigbuflen == CACKEY_PCSC_E_NEEDLOGIN && cackey_pin_command != NULL) {
+				if (_C_LoginMutexArg(hSession, CKU_USER, NULL, 0, 0) == CKR_OK) {
+					sigbuflen = cackey_signdecrypt(&cackey_slots[slotID], cackey_sessions[hSession].sign_identity, cackey_sessions[hSession].sign_buf, cackey_sessions[hSession].sign_bufused, sigbuf, sizeof(sigbuf), 1, 0);
+				}
+			}
 
 			if (sigbuflen < 0) {
 				/* Signing failed. */
