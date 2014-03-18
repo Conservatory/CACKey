@@ -35,6 +35,10 @@
 #ifdef HAVE_STDIO_H
 #  include <stdio.h>
 #endif
+#define HAVE_ERRNO_H 1
+#ifdef HAVE_ERRNO_H
+#  include <errno.h>
+#endif
 #ifdef HAVE_ZLIB_H
 #  ifdef HAVE_LIBZ
 #    include <zlib.h>
@@ -4393,6 +4397,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 
 	/* Determine list of readers */
 	pcsc_connect_ret = cackey_pcsc_connect();
+/* XXX: CAN HANG HERE ! */
 	if (pcsc_connect_ret != CACKEY_PCSC_S_OK) {
 		CACKEY_DEBUG_PRINTF("Connection to PC/SC failed, assuming no slots");
 
@@ -5309,6 +5314,12 @@ CK_DEFINE_FUNCTION(CK_RV, _C_LoginMutexArg)(CK_SESSION_HANDLE hSession, CK_USER_
 		}
 
 		pclose_ret = pclose(pinfd);
+		if (pclose_ret == -1 && errno == ECHILD) {
+			CACKEY_DEBUG_PRINTF("Notice.  pclose() indicated it could not get the status of the child, assuming it succeeeded !");
+
+			pclose_ret = 0;
+		}
+
 		if (pclose_ret != 0) {
 			CACKEY_DEBUG_PRINTF("Error.  %s: exited with non-zero status of %i", pincmd, pclose_ret);
 
