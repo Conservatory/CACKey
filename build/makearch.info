@@ -1,0 +1,39 @@
+# This is the name of the utility, it will be prefixed to the tarball name
+UTIL="cackey"
+
+# This is the name of output files that should exist after configure 
+# procedures.
+BINS="libcackey.so"
+
+# This lists the name of files that are required to exist
+REQS=""
+
+# Version of utility, if empty it will be guessed.
+# If set to "auto" it will be maintained in a file called .version
+# in the source directory and the revision will be incremented
+# each time a "makearch" is done.
+VERS=""
+
+# Space sperated list of documents, if they exist, they will be
+# prefixed with the contents of the DOC_HDR file and substitution
+# will occur:
+#     @@UTIL@@ becomes the utility name ${UTIL}
+#     @@VERS@@ becomes the utility version
+#     @@DATE@@ becomes the current date
+DOCS="README.txt LICENSE"
+DOC_HDR="HEADER"
+
+# These files follow the same convention as DOCS, but don't have the header
+# tacked onto them.
+UPDATE_VARS="cackey.spec"
+
+# This script is executed immediately after copying the files
+# to a temp directory to attempt to compile
+BEFORE="build/build.sh"
+
+# This script is executed immediately prior to creation of the
+# tarball
+AFTER=""
+
+# Files matching these (space-seperated) patterns are deleted
+TMPS="*.out HEADER work .project_aliases build_delete *~ *.tmp"

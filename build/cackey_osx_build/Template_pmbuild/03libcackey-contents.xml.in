@@ -1,0 +1,7 @@
+<pkg-contents spec="1.12">
+	<f n="cackey.dylib" o="root" g="wheel" p="33261" pt="@@BUILDROOTDIR@@/build/cackey_osx_build/cackey.dylib" m="true" t="file">
+		<mod>owner</mod>
+		<mod>mode</mod>
+		<mod>group</mod>
+	</f>
+</pkg-contents>

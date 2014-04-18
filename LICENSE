@@ -1,21 +1,73 @@
-The MIT License (MIT)
+                            CACKey 201207191606
 
-Copyright (c) 2014 The Conservatory
+Release information:
+    pkg: CACKey version 201207191606
+   date: Thu Jul 19 16:06:56 UTC 2012
+ author: US Army Corps of Engineers
+contact: Roy Keene <email no longer valid>
+         US Army Corps of Engineers
+         Information Technology Laboratory
+         Vicksburg, MS 39180
+--------------------------------------------------------------------------
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+With the exceptions noted below, the files in this directory and the
+'leakcheck' subdirectory are Copyright 2012, Lockheed Martin
+Corporation.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The U.S. Government has Unlimited Rights in this computer software
+pursuant to the clause DFARS 252.227-7014 of contract No.
+W91WMC-07-D-0001. Any reproduction of this computer software, or
+portions thereof, marked with this legend must also reproduce these
+markings.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+The files this project developed in the performance of contract
+W91WMC-07-D-0001 (see exceptions below) are authorized for
+distribution by the United States Government under the following
+license:  
+
+LICENSE (MIT)
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+EXCEPTIONS
+
+The following files in this directory are the intellectual property of
+the Free Software Foundation and are licensed under the terms of
+GPL-2.0-with-autoconf-exception: config.guess, config.sub
+
+The followig files in this directory are the intellectual property of
+the X Consortium, and are licensed under the X11 license: install.sh
+
+The following files in this directory are the intellectual property of
+RSA Data Security, Inc., and are licensed under terms specified
+therein: md5.h, md5.c These files are "derived from the RSA Data
+Security, Inc. MD5 Message-Digest Algorithm".
+
+The following files in this directory are from RFC 3174, are the
+intellectual property of the Internet Society, and are licensed under
+terms specified therein: sha1.c, sha1.h
+
+The files in the "pkcs11/" directory are licensed under the terms of the
+following licenses:
+	mypkcs11.h : GNU Lesser General Public License 2.1.
+	pkcs11.h   : GNU Lesser General Public License 2.1.
+	pkcs11f.h  : GNU Lesser General Public License 2.1.
+	pkcs11n.h  : Mozilla Public License 2.0
+	pkcs11t.h  : GNU Lesser General Public License 2.1.

@@ -1,0 +1,430 @@
+
+bsmith@108796: /* This Source Code Form is subject to the terms of the Mozilla Public
+bsmith@108796:  * License, v. 2.0. If a copy of the MPL was not distributed with this
+bsmith@108796:  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+kaie@27007: 
+kaie@27007: #ifndef _PKCS11N_H_
+kaie@27007: #define _PKCS11N_H_
+kaie@27007: 
+kaie@27007: #ifdef DEBUG
+bsmith@108796: static const char CKT_CVS_ID[] = "@(#) $RCSfile: pkcs11n.h,v $ $Revision: 1.28 $ $Date: 2012/04/25 14:50:16 $";
+kaie@27007: #endif /* DEBUG */
+kaie@27007: 
+kaie@27007: /*
+kaie@27007:  * pkcs11n.h
+kaie@27007:  *
+kaie@27007:  * This file contains the NSS-specific type definitions for Cryptoki
+kaie@27007:  * (PKCS#11).
+kaie@27007:  */
+kaie@27007: 
+kaie@27007: /*
+kaie@27007:  * NSSCK_VENDOR_NSS
+kaie@27007:  *
+kaie@27007:  * Cryptoki reserves the high half of all the number spaces for
+kaie@27007:  * vendor-defined use.  I'd like to keep all of our NSS-
+kaie@27007:  * specific values together, but not in the oh-so-obvious
+kaie@27007:  * 0x80000001, 0x80000002, etc. area.  So I've picked an offset,
+kaie@27007:  * and constructed values for the beginnings of our spaces.
+kaie@27007:  *
+kaie@27007:  * Note that some "historical" Netscape values don't fall within
+kaie@27007:  * this range.
+kaie@27007:  */
+kaie@27007: #define NSSCK_VENDOR_NSS 0x4E534350 /* NSCP */
+kaie@27007: 
+kaie@27007: /*
+kaie@27007:  * NSS-defined object classes
+kaie@27007:  * 
+kaie@27007:  */
+kaie@27007: #define CKO_NSS (CKO_VENDOR_DEFINED|NSSCK_VENDOR_NSS)
+kaie@27007: 
+kaie@27007: #define CKO_NSS_CRL                (CKO_NSS + 1)
+kaie@27007: #define CKO_NSS_SMIME              (CKO_NSS + 2)
+kaie@27007: #define CKO_NSS_TRUST              (CKO_NSS + 3)
+kaie@27007: #define CKO_NSS_BUILTIN_ROOT_LIST  (CKO_NSS + 4)
+kaie@27007: #define CKO_NSS_NEWSLOT            (CKO_NSS + 5)
+kaie@27007: #define CKO_NSS_DELSLOT            (CKO_NSS + 6)
+kaie@27007: 
+kaie@27007: 
+kaie@27007: /*
+kaie@27007:  * NSS-defined key types
+kaie@27007:  *
+kaie@27007:  */
+kaie@27007: #define CKK_NSS (CKK_VENDOR_DEFINED|NSSCK_VENDOR_NSS)
+kaie@27007: 
+kaie@27007: #define CKK_NSS_PKCS8              (CKK_NSS + 1)
+kaie@58967: 
+kaie@58967: #define CKK_NSS_JPAKE_ROUND1       (CKK_NSS + 2)
+kaie@58967: #define CKK_NSS_JPAKE_ROUND2       (CKK_NSS + 3)
+kaie@58967: 
+kaie@27007: /*
+kaie@27007:  * NSS-defined certificate types
+kaie@27007:  *
+kaie@27007:  */
+kaie@27007: #define CKC_NSS (CKC_VENDOR_DEFINED|NSSCK_VENDOR_NSS)
+kaie@27007: 
+kaie@27007: /* FAKE PKCS #11 defines */
+kaie@27007: #define CKA_DIGEST            0x81000000L
+kaie@27007: #define CKA_FLAGS_ONLY        0 /* CKA_CLASS */
+kaie@27007: 
+kaie@27007: /*
+kaie@27007:  * NSS-defined object attributes
+kaie@27007:  *
+kaie@27007:  */
+kaie@27007: #define CKA_NSS (CKA_VENDOR_DEFINED|NSSCK_VENDOR_NSS)
+kaie@27007: 
+kaie@27007: #define CKA_NSS_URL                (CKA_NSS +  1)
+kaie@27007: #define CKA_NSS_EMAIL              (CKA_NSS +  2)
+kaie@27007: #define CKA_NSS_SMIME_INFO         (CKA_NSS +  3)
+kaie@27007: #define CKA_NSS_SMIME_TIMESTAMP    (CKA_NSS +  4)
+kaie@27007: #define CKA_NSS_PKCS8_SALT         (CKA_NSS +  5)
+kaie@27007: #define CKA_NSS_PASSWORD_CHECK     (CKA_NSS +  6)
+kaie@27007: #define CKA_NSS_EXPIRES            (CKA_NSS +  7)
+kaie@27007: #define CKA_NSS_KRL                (CKA_NSS +  8)
+kaie@27007: 
+kaie@27007: #define CKA_NSS_PQG_COUNTER        (CKA_NSS +  20)
+kaie@27007: #define CKA_NSS_PQG_SEED           (CKA_NSS +  21)
+kaie@27007: #define CKA_NSS_PQG_H              (CKA_NSS +  22)
+kaie@27007: #define CKA_NSS_PQG_SEED_BITS      (CKA_NSS +  23)
+kaie@27007: #define CKA_NSS_MODULE_SPEC        (CKA_NSS +  24)
+kaie@27007: #define CKA_NSS_OVERRIDE_EXTENSIONS (CKA_NSS +  25)
+kaie@27007: 
+kaie@58967: #define CKA_NSS_JPAKE_SIGNERID     (CKA_NSS +  26)
+kaie@58967: #define CKA_NSS_JPAKE_PEERID       (CKA_NSS +  27)
+kaie@58967: #define CKA_NSS_JPAKE_GX1          (CKA_NSS +  28)
+kaie@58967: #define CKA_NSS_JPAKE_GX2          (CKA_NSS +  29)
+kaie@58967: #define CKA_NSS_JPAKE_GX3          (CKA_NSS +  30)
+kaie@58967: #define CKA_NSS_JPAKE_GX4          (CKA_NSS +  31)
+kaie@58967: #define CKA_NSS_JPAKE_X2           (CKA_NSS +  32)
+kaie@58967: #define CKA_NSS_JPAKE_X2S          (CKA_NSS +  33)
+kaie@58967: 
+kaie@27007: /*
+kaie@27007:  * Trust attributes:
+kaie@27007:  *
+kaie@27007:  * If trust goes standard, these probably will too.  So I'll
+kaie@27007:  * put them all in one place.
+kaie@27007:  */
+kaie@27007: 
+kaie@27007: #define CKA_TRUST (CKA_NSS + 0x2000)
+kaie@27007: 
+kaie@27007: /* "Usage" key information */
+kaie@27007: #define CKA_TRUST_DIGITAL_SIGNATURE     (CKA_TRUST +  1)
+kaie@27007: #define CKA_TRUST_NON_REPUDIATION       (CKA_TRUST +  2)
+kaie@27007: #define CKA_TRUST_KEY_ENCIPHERMENT      (CKA_TRUST +  3)
+kaie@27007: #define CKA_TRUST_DATA_ENCIPHERMENT     (CKA_TRUST +  4)
+kaie@27007: #define CKA_TRUST_KEY_AGREEMENT         (CKA_TRUST +  5)
+kaie@27007: #define CKA_TRUST_KEY_CERT_SIGN         (CKA_TRUST +  6)
+kaie@27007: #define CKA_TRUST_CRL_SIGN              (CKA_TRUST +  7)
+kaie@27007: 
+kaie@27007: /* "Purpose" trust information */
+kaie@27007: #define CKA_TRUST_SERVER_AUTH           (CKA_TRUST +  8)
+kaie@27007: #define CKA_TRUST_CLIENT_AUTH           (CKA_TRUST +  9)
+kaie@27007: #define CKA_TRUST_CODE_SIGNING          (CKA_TRUST + 10)
+kaie@27007: #define CKA_TRUST_EMAIL_PROTECTION      (CKA_TRUST + 11)
+kaie@27007: #define CKA_TRUST_IPSEC_END_SYSTEM      (CKA_TRUST + 12)
+kaie@27007: #define CKA_TRUST_IPSEC_TUNNEL          (CKA_TRUST + 13)
+kaie@27007: #define CKA_TRUST_IPSEC_USER            (CKA_TRUST + 14)
+kaie@27007: #define CKA_TRUST_TIME_STAMPING         (CKA_TRUST + 15)
+kaie@27007: #define CKA_TRUST_STEP_UP_APPROVED      (CKA_TRUST + 16)
+kaie@27007: 
+kaie@27007: #define CKA_CERT_SHA1_HASH	        (CKA_TRUST + 100)
+kaie@27007: #define CKA_CERT_MD5_HASH		(CKA_TRUST + 101)
+kaie@27007: 
+kaie@27007: /* NSS trust stuff */
+kaie@27007: 
+kaie@27007: /* HISTORICAL: define used to pass in the database key for DSA private keys */
+kaie@27007: #define CKA_NETSCAPE_DB                 0xD5A0DB00L
+kaie@27007: #define CKA_NETSCAPE_TRUST              0x80000001L
+kaie@27007: 
+kaie@27007: /* FAKE PKCS #11 defines */
+kaie@27007: #define CKM_FAKE_RANDOM       0x80000efeUL
+kaie@27007: #define CKM_INVALID_MECHANISM 0xffffffffUL
+kaie@27007: 
+kaie@27007: /*
+kaie@27007:  * NSS-defined crypto mechanisms
+kaie@27007:  *
+kaie@27007:  */
+kaie@27007: #define CKM_NSS (CKM_VENDOR_DEFINED|NSSCK_VENDOR_NSS)
+kaie@27007: 
+kaie@27007: #define CKM_NSS_AES_KEY_WRAP      (CKM_NSS + 1)
+kaie@27007: #define CKM_NSS_AES_KEY_WRAP_PAD  (CKM_NSS + 2)
+kaie@27007: 
+kaie@58967: /* HKDF key derivation mechanisms. See CK_NSS_HKDFParams for documentation. */
+kaie@58967: #define CKM_NSS_HKDF_SHA1         (CKM_NSS + 3)
+kaie@58967: #define CKM_NSS_HKDF_SHA256       (CKM_NSS + 4)
+kaie@58967: #define CKM_NSS_HKDF_SHA384       (CKM_NSS + 5)
+kaie@58967: #define CKM_NSS_HKDF_SHA512       (CKM_NSS + 6)
+kaie@58967: 
+kaie@58967: /* J-PAKE round 1 key generation mechanisms.
+kaie@58967:  *
+kaie@58967:  * Required template attributes: CKA_PRIME, CKA_SUBPRIME, CKA_BASE,
+kaie@58967:  *                               CKA_NSS_JPAKE_SIGNERID
+kaie@58967:  * Output key type: CKK_NSS_JPAKE_ROUND1
+kaie@58967:  * Output key class: CKO_PRIVATE_KEY
+kaie@58967:  * Parameter type: CK_NSS_JPAKERound1Params
+kaie@58967:  *
+kaie@58967:  */
+kaie@58967: #define CKM_NSS_JPAKE_ROUND1_SHA1   (CKM_NSS + 7)
+kaie@58967: #define CKM_NSS_JPAKE_ROUND1_SHA256 (CKM_NSS + 8)
+kaie@58967: #define CKM_NSS_JPAKE_ROUND1_SHA384 (CKM_NSS + 9)
+kaie@58967: #define CKM_NSS_JPAKE_ROUND1_SHA512 (CKM_NSS + 10)
+kaie@58967: 
+kaie@58967: /* J-PAKE round 2 key derivation mechanisms.
+kaie@58967:  * 
+kaie@58967:  * Required template attributes: CKA_NSS_JPAKE_PEERID
+kaie@58967:  * Input key type:  CKK_NSS_JPAKE_ROUND1
+kaie@58967:  * Output key type: CKK_NSS_JPAKE_ROUND2
+kaie@58967:  * Output key class: CKO_PRIVATE_KEY
+kaie@58967:  * Parameter type: CK_NSS_JPAKERound2Params
+kaie@58967:  */
+kaie@58967: #define CKM_NSS_JPAKE_ROUND2_SHA1   (CKM_NSS + 11)
+kaie@58967: #define CKM_NSS_JPAKE_ROUND2_SHA256 (CKM_NSS + 12)
+kaie@58967: #define CKM_NSS_JPAKE_ROUND2_SHA384 (CKM_NSS + 13)
+kaie@58967: #define CKM_NSS_JPAKE_ROUND2_SHA512 (CKM_NSS + 14)
+kaie@58967: 
+kaie@58967: /* J-PAKE final key material derivation mechanisms 
+kaie@58967:  *
+kaie@58967:  * Input key type:  CKK_NSS_JPAKE_ROUND2
+kaie@58967:  * Output key type: CKK_GENERIC_SECRET
+kaie@58967:  * Output key class: CKO_SECRET_KEY
+kaie@58967:  * Parameter type: CK_NSS_JPAKEFinalParams
+kaie@58967:  *
+kaie@58967:  * You must apply a KDF (e.g. CKM_NSS_HKDF_*) to resultant keying material 
+kaie@58967:  * to get a key with uniformly distributed bits.
+kaie@58967:  */
+kaie@58967: #define CKM_NSS_JPAKE_FINAL_SHA1    (CKM_NSS + 15)
+kaie@58967: #define CKM_NSS_JPAKE_FINAL_SHA256  (CKM_NSS + 16)
+kaie@58967: #define CKM_NSS_JPAKE_FINAL_SHA384  (CKM_NSS + 17)
+kaie@58967: #define CKM_NSS_JPAKE_FINAL_SHA512  (CKM_NSS + 18)
+kaie@58967: 
+kaie@27007: /*
+kaie@27007:  * HISTORICAL:
+kaie@27007:  * Do not attempt to use these. They are only used by NETSCAPE's internal
+kaie@27007:  * PKCS #11 interface. Most of these are place holders for other mechanism
+kaie@27007:  * and will change in the future.
+kaie@27007:  */
+kaie@27007: #define CKM_NETSCAPE_PBE_SHA1_DES_CBC           0x80000002UL
+kaie@27007: #define CKM_NETSCAPE_PBE_SHA1_TRIPLE_DES_CBC    0x80000003UL
+kaie@27007: #define CKM_NETSCAPE_PBE_SHA1_40_BIT_RC2_CBC    0x80000004UL
+kaie@27007: #define CKM_NETSCAPE_PBE_SHA1_128_BIT_RC2_CBC   0x80000005UL
+kaie@27007: #define CKM_NETSCAPE_PBE_SHA1_40_BIT_RC4        0x80000006UL
+kaie@27007: #define CKM_NETSCAPE_PBE_SHA1_128_BIT_RC4       0x80000007UL
+kaie@27007: #define CKM_NETSCAPE_PBE_SHA1_FAULTY_3DES_CBC   0x80000008UL
+kaie@27007: #define CKM_NETSCAPE_PBE_SHA1_HMAC_KEY_GEN      0x80000009UL
+kaie@27007: #define CKM_NETSCAPE_PBE_MD5_HMAC_KEY_GEN       0x8000000aUL
+kaie@27007: #define CKM_NETSCAPE_PBE_MD2_HMAC_KEY_GEN       0x8000000bUL
+kaie@27007: 
+kaie@27007: #define CKM_TLS_PRF_GENERAL                     0x80000373UL
+kaie@27007: 
+kaie@58967: typedef struct CK_NSS_JPAKEPublicValue {
+kaie@58967:     CK_BYTE * pGX;
+kaie@58967:     CK_ULONG ulGXLen;
+kaie@58967:     CK_BYTE * pGV;
+kaie@58967:     CK_ULONG ulGVLen;
+kaie@58967:     CK_BYTE * pR;
+kaie@58967:     CK_ULONG ulRLen;
+kaie@58967: } CK_NSS_JPAKEPublicValue;
+kaie@58967: 
+kaie@58967: typedef struct CK_NSS_JPAKERound1Params {
+kaie@58967:     CK_NSS_JPAKEPublicValue gx1; /* out */
+kaie@58967:     CK_NSS_JPAKEPublicValue gx2; /* out */
+kaie@58967: } CK_NSS_JPAKERound1Params;
+kaie@58967: 
+kaie@58967: typedef struct CK_NSS_JPAKERound2Params {
+kaie@58967:     CK_BYTE * pSharedKey;        /* in */
+kaie@58967:     CK_ULONG ulSharedKeyLen;     /* in */
+kaie@58967:     CK_NSS_JPAKEPublicValue gx3; /* in */
+kaie@58967:     CK_NSS_JPAKEPublicValue gx4; /* in */
+kaie@58967:     CK_NSS_JPAKEPublicValue A;   /* out */
+kaie@58967: } CK_NSS_JPAKERound2Params;
+kaie@58967: 
+kaie@58967: typedef struct CK_NSS_JPAKEFinalParams {
+kaie@58967:     CK_NSS_JPAKEPublicValue B; /* in */
+kaie@58967: } CK_NSS_JPAKEFinalParams;
+kaie@58967: 
+kaie@27007: /*
+kaie@27007:  * NSS-defined return values
+kaie@27007:  *
+kaie@27007:  */
+kaie@27007: #define CKR_NSS (CKM_VENDOR_DEFINED|NSSCK_VENDOR_NSS)
+kaie@27007: 
+kaie@27007: #define CKR_NSS_CERTDB_FAILED      (CKR_NSS + 1)
+kaie@27007: #define CKR_NSS_KEYDB_FAILED       (CKR_NSS + 2)
+kaie@27007: 
+kaie@58967: /* Mandatory parameter for the CKM_NSS_HKDF_* key deriviation mechanisms.
+kaie@58967:    See RFC 5869.
+kaie@58967:    
+kaie@58967:     bExtract: If set, HKDF-Extract will be applied to the input key. If
+kaie@58967:               the optional salt is given, it is used; otherwise, the salt is
+kaie@58967:               set to a sequence of zeros equal in length to the HMAC output.
+kaie@58967:               If bExpand is not set, then the key template given to
+kaie@58967:               C_DeriveKey must indicate an output key size less than or equal
+kaie@58967:               to the output size of the HMAC.
+kaie@58967: 
+kaie@58967:     bExpand:  If set, HKDF-Expand will be applied to the input key (if
+kaie@58967:               bExtract is not set) or to the result of HKDF-Extract (if
+kaie@58967:               bExtract is set). Any info given in the optional pInfo field will
+kaie@58967:               be included in the calculation.
+kaie@58967: 
+kaie@58967:     The size of the output key must be specified in the template passed to
+kaie@58967:     C_DeriveKey.
+kaie@58967: */
+kaie@58967: typedef struct CK_NSS_HKDFParams {
+kaie@58967:     CK_BBOOL bExtract;
+kaie@58967:     CK_BYTE_PTR pSalt;
+kaie@58967:     CK_ULONG ulSaltLen;
+kaie@58967:     CK_BBOOL bExpand;
+kaie@58967:     CK_BYTE_PTR pInfo;
+kaie@58967:     CK_ULONG ulInfoLen;
+kaie@58967: } CK_NSS_HKDFParams;
+kaie@58967: 
+kaie@27007: /*
+kaie@27007:  * Trust info
+kaie@27007:  *
+kaie@27007:  * This isn't part of the Cryptoki standard (yet), so I'm putting
+kaie@27007:  * all the definitions here.  Some of this would move to nssckt.h
+kaie@27007:  * if trust info were made part of the standard.  In view of this
+kaie@27007:  * possibility, I'm putting my (NSS) values in the NSS
+kaie@27007:  * vendor space, like everything else.
+kaie@27007:  */
+kaie@27007: 
+kaie@27007: typedef CK_ULONG          CK_TRUST;
+kaie@27007: 
+kaie@27007: /* The following trust types are defined: */
+kaie@27007: #define CKT_VENDOR_DEFINED     0x80000000
+kaie@27007: 
+kaie@27007: #define CKT_NSS (CKT_VENDOR_DEFINED|NSSCK_VENDOR_NSS)
+kaie@27007: 
+kaie@27007: /* If trust goes standard, these'll probably drop out of vendor space. */
+kaie@27007: #define CKT_NSS_TRUSTED            (CKT_NSS + 1)
+kaie@27007: #define CKT_NSS_TRUSTED_DELEGATOR  (CKT_NSS + 2)
+kaie@75563: #define CKT_NSS_MUST_VERIFY_TRUST  (CKT_NSS + 3)
+kaie@75563: #define CKT_NSS_NOT_TRUSTED        (CKT_NSS + 10)
+kaie@27007: #define CKT_NSS_TRUST_UNKNOWN      (CKT_NSS + 5) /* default */
+kaie@27007: 
+kaie@27007: /* 
+kaie@27007:  * These may well remain NSS-specific; I'm only using them
+kaie@27007:  * to cache resolution data.
+kaie@27007:  */
+kaie@27007: #define CKT_NSS_VALID_DELEGATOR    (CKT_NSS + 11)
+kaie@27007: 
+kaie@75563: 
+kaie@75563: /*
+kaie@75563:  * old definitions. They still exist, but the plain meaning of the
+bsmith@78350:  * labels have never been accurate to what was really implemented.
+kaie@75563:  * The new labels correctly reflect what the values effectively mean.
+kaie@75563:  */
+bsmith@81091: #if defined(__GNUC__) && (__GNUC__ > 3)
+kaie@75563: /* make GCC warn when we use these #defines */
+kaie@75563: /*
+kaie@75563:  *  This is really painful because GCC doesn't allow us to mark random
+kaie@75563:  *  #defines as deprecated. We can only mark the following:
+kaie@75563:  *      functions, variables, and types.
+kaie@75563:  *  const variables will create extra storage for everyone including this
+kaie@75563:  *       header file, so it's undesirable.
+kaie@75563:  *  functions could be inlined to prevent storage creation, but will fail
+kaie@75563:  *       when constant values are expected (like switch statements).
+kaie@75563:  *  enum types do not seem to pay attention to the deprecated attribute.
+kaie@75563:  *
+kaie@75563:  *  That leaves typedefs. We declare new types that we then deprecate, then
+kaie@75563:  *  cast the resulting value to the deprecated type in the #define, thus
+kaie@75563:  *  producting the warning when the #define is used.
+kaie@75563:  */
+bsmith@81091: #if (__GNUC__  == 4) && (__GNUC_MINOR__ < 5)
+kaie@75563: /* The mac doesn't like the friendlier deprecate messages. I'm assuming this
+kaie@75563:  * is a gcc version issue rather than mac or ppc specific */
+kaie@75563: typedef CK_TRUST __CKT_NSS_UNTRUSTED __attribute__((deprecated));
+kaie@75563: typedef CK_TRUST __CKT_NSS_VALID __attribute__ ((deprecated));
+kaie@75563: typedef CK_TRUST __CKT_NSS_MUST_VERIFY __attribute__((deprecated));
+kaie@75563: #else
+kaie@75563: /* when possible, get a full deprecation warning. This works on gcc 4.5
+kaie@75563:  * it may work on earlier versions of gcc */
+kaie@75563: typedef CK_TRUST __CKT_NSS_UNTRUSTED __attribute__((deprecated
+kaie@75563:     ("CKT_NSS_UNTRUSTED really means CKT_NSS_MUST_VERIFY_TRUST")));
+kaie@75563: typedef CK_TRUST __CKT_NSS_VALID __attribute__ ((deprecated
+kaie@75563:     ("CKT_NSS_VALID really means CKT_NSS_NOT_TRUSTED")));
+kaie@75563: typedef CK_TRUST __CKT_NSS_MUST_VERIFY __attribute__((deprecated
+kaie@75563:     ("CKT_NSS_MUST_VERIFY really functions as CKT_NSS_TRUST_UNKNOWN")));
+kaie@75563: #endif
+kaie@75563: #define CKT_NSS_UNTRUSTED ((__CKT_NSS_UNTRUSTED)CKT_NSS_MUST_VERIFY_TRUST)
+kaie@75563: #define CKT_NSS_VALID     ((__CKT_NSS_VALID) CKT_NSS_NOT_TRUSTED)
+kaie@75563: /* keep the old value for compatibility reasons*/
+kaie@75563: #define CKT_NSS_MUST_VERIFY ((__CKT_NSS_MUST_VERIFY)(CKT_NSS +4))
+kaie@75563: #else
+kaie@75563: #ifdef _WIN32
+kaie@75563: /* This magic gets the windows compiler to give us a deprecation
+kaie@75563:  * warning */
+kaie@75563: #pragma deprecated(CKT_NSS_UNTRUSTED, CKT_NSS_MUST_VERIFY, CKT_NSS_VALID)
+kaie@75563: #endif
+kaie@75563: /* CKT_NSS_UNTRUSTED really means CKT_NSS_MUST_VERIFY_TRUST */
+kaie@75563: #define CKT_NSS_UNTRUSTED          CKT_NSS_MUST_VERIFY_TRUST
+kaie@75563: /* CKT_NSS_VALID really means CKT_NSS_NOT_TRUSTED */
+kaie@75563: #define CKT_NSS_VALID              CKT_NSS_NOT_TRUSTED
+kaie@75563: /* CKT_NSS_MUST_VERIFY was always treated as CKT_NSS_TRUST_UNKNOWN */
+kaie@75563: #define CKT_NSS_MUST_VERIFY        (CKT_NSS + 4)  /*really means trust unknown*/
+kaie@75563: #endif
+kaie@75563: 
+kaie@27007: /* don't leave old programs in a lurch just yet, give them the old NETSCAPE
+kaie@27007:  * synonym */
+kaie@27007: #define CKO_NETSCAPE_CRL                CKO_NSS_CRL
+kaie@27007: #define CKO_NETSCAPE_SMIME              CKO_NSS_SMIME
+kaie@27007: #define CKO_NETSCAPE_TRUST              CKO_NSS_TRUST
+kaie@27007: #define CKO_NETSCAPE_BUILTIN_ROOT_LIST  CKO_NSS_BUILTIN_ROOT_LIST
+kaie@27007: #define CKO_NETSCAPE_NEWSLOT            CKO_NSS_NEWSLOT
+kaie@27007: #define CKO_NETSCAPE_DELSLOT            CKO_NSS_DELSLOT
+kaie@27007: #define CKK_NETSCAPE_PKCS8              CKK_NSS_PKCS8
+kaie@27007: #define CKA_NETSCAPE_URL                CKA_NSS_URL
+kaie@27007: #define CKA_NETSCAPE_EMAIL              CKA_NSS_EMAIL
+kaie@27007: #define CKA_NETSCAPE_SMIME_INFO         CKA_NSS_SMIME_INFO
+kaie@27007: #define CKA_NETSCAPE_SMIME_TIMESTAMP    CKA_NSS_SMIME_TIMESTAMP
+kaie@27007: #define CKA_NETSCAPE_PKCS8_SALT         CKA_NSS_PKCS8_SALT
+kaie@27007: #define CKA_NETSCAPE_PASSWORD_CHECK     CKA_NSS_PASSWORD_CHECK
+kaie@27007: #define CKA_NETSCAPE_EXPIRES            CKA_NSS_EXPIRES
+kaie@27007: #define CKA_NETSCAPE_KRL                CKA_NSS_KRL
+kaie@27007: #define CKA_NETSCAPE_PQG_COUNTER        CKA_NSS_PQG_COUNTER
+kaie@27007: #define CKA_NETSCAPE_PQG_SEED           CKA_NSS_PQG_SEED
+kaie@27007: #define CKA_NETSCAPE_PQG_H              CKA_NSS_PQG_H
+kaie@27007: #define CKA_NETSCAPE_PQG_SEED_BITS      CKA_NSS_PQG_SEED_BITS
+kaie@27007: #define CKA_NETSCAPE_MODULE_SPEC        CKA_NSS_MODULE_SPEC
+kaie@27007: #define CKM_NETSCAPE_AES_KEY_WRAP	CKM_NSS_AES_KEY_WRAP
+kaie@27007: #define CKM_NETSCAPE_AES_KEY_WRAP_PAD	CKM_NSS_AES_KEY_WRAP_PAD
+kaie@27007: #define CKR_NETSCAPE_CERTDB_FAILED      CKR_NSS_CERTDB_FAILED
+kaie@27007: #define CKR_NETSCAPE_KEYDB_FAILED       CKR_NSS_KEYDB_FAILED
+kaie@75563: 
+kaie@27007: #define CKT_NETSCAPE_TRUSTED            CKT_NSS_TRUSTED
+kaie@27007: #define CKT_NETSCAPE_TRUSTED_DELEGATOR  CKT_NSS_TRUSTED_DELEGATOR
+kaie@27007: #define CKT_NETSCAPE_UNTRUSTED          CKT_NSS_UNTRUSTED
+kaie@27007: #define CKT_NETSCAPE_MUST_VERIFY        CKT_NSS_MUST_VERIFY
+kaie@27007: #define CKT_NETSCAPE_TRUST_UNKNOWN      CKT_NSS_TRUST_UNKNOWN
+kaie@27007: #define CKT_NETSCAPE_VALID              CKT_NSS_VALID
+kaie@27007: #define CKT_NETSCAPE_VALID_DELEGATOR    CKT_NSS_VALID_DELEGATOR
+kaie@27007: 
+kaie@27007: /*
+kaie@27007:  * These are not really PKCS #11 values specifically. They are the 'loadable'
+kaie@27007:  * module spec NSS uses. The are available for others to use as well, but not
+kaie@27007:  * part of the formal PKCS #11 spec.
+kaie@27007:  *
+kaie@27007:  * The function 'FIND' returns an array of PKCS #11 initialization strings
+kaie@27007:  * The function 'ADD' takes a PKCS #11 initialization string and stores it.
+kaie@27007:  * The function 'DEL' takes a 'name= library=' value and deletes the associated
+kaie@27007:  *  string.
+kaie@27007:  * The function 'RELEASE' frees the array returned by 'FIND'
+kaie@27007:  */
+kaie@27007: #define SECMOD_MODULE_DB_FUNCTION_FIND  0
+kaie@27007: #define SECMOD_MODULE_DB_FUNCTION_ADD   1
+kaie@27007: #define SECMOD_MODULE_DB_FUNCTION_DEL   2
+kaie@27007: #define SECMOD_MODULE_DB_FUNCTION_RELEASE 3 
+kaie@27007: typedef char ** (PR_CALLBACK *SECMODModuleDBFunc)(unsigned long function,
+kaie@27007:                                         char *parameters, void *moduleSpec);
+kaie@27007: 
+kaie@27007: /* softoken slot ID's */
+kaie@27007: #define SFTK_MIN_USER_SLOT_ID 4
+kaie@27007: #define SFTK_MAX_USER_SLOT_ID 100
+kaie@27007: #define SFTK_MIN_FIPS_USER_SLOT_ID 101
+kaie@27007: #define SFTK_MAX_FIPS_USER_SLOT_ID 127
+kaie@27007: 
+kaie@27007: 
+kaie@27007: #endif /* _PKCS11N_H_ */
+
+
+
+

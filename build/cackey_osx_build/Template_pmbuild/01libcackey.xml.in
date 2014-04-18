@@ -1,0 +1,35 @@
+<pkgref spec="1.12" uuid="@@UUID@@">
+	<config>
+		<identifier>mil.army.usace.cackeyForMacOsX@@OSXVERSION@@.libcackey.pkg</identifier>
+		<version>1</version>
+		<description></description>
+		<post-install type="none"/>
+		<requireAuthorization/>
+		<installFrom relative="true" mod="true">../../macbuild/@@OSXVERSION@@/libcackey.dylib</installFrom>
+		<installTo mod="true" relocatable="true">/Library/CACKey/</installTo>
+		<flags>
+			<followSymbolicLinks/>
+		</flags>
+		<packageStore type="internal"></packageStore>
+		<mod>parent</mod>
+		<mod>scripts.postinstall.path</mod>
+		<mod>scripts.scriptsDirectoryPath.isRelativeType</mod>
+		<mod>scripts.scriptsDirectoryPath.path</mod>
+		<mod>relocatable</mod>
+		<mod>installTo.path</mod>
+		<mod>installFrom.path</mod>
+		<mod>installTo</mod>
+	</config>
+	<scripts>
+		<postinstall mod="true">@@BUILDROOTDIR@@/build/cackey_osx_build/Template_pmbuild/scripts/01libcackey-post.sh</postinstall>
+		<scripts-dir mod="true">@@BUILDROOTDIR@@/build/cackey_osx_build/Template_pmbuild/scripts</scripts-dir>
+	</scripts>
+	<contents>
+		<file-list>01libcackey-contents.xml</file-list>
+		<filter>/CVS$</filter>
+		<filter>/\.svn$</filter>
+		<filter>/\.cvsignore$</filter>
+		<filter>/\.cvspass$</filter>
+		<filter>/\.DS_Store$</filter>
+	</contents>
+</pkgref>

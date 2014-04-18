@@ -1,0 +1,7 @@
+<pkg-contents spec="1.12">
+	<d n="PKCS11.tokend" o="root" g="wheel" p="33261" pt="@@BUILDROOTDIR@@/build/cackey_osx_build/PKCS11.tokend" m="true" t="file">
+		<mod>owner</mod>
+		<mod>mode</mod>
+		<mod>group</mod>
+	</d>
+</pkg-contents>

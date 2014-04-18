@@ -1,0 +1,75 @@
+#! /bin/bash
+
+RPMFILE="$(readlink -f "$1")"
+DEBFILE="$2"
+export RPMFILE DEBGFILE
+
+if [ -z "${RPMFILE}" ]; then
+	echo 'Usage: rpm2deb <rpmfile> [<debfile>]' >&2
+
+	exit 1
+fi
+
+if [ -z "${DEBFILE}" ]; then
+	DEBFILE="$(echo "${RPMFILE}" | sed 's@\.rpm$@.deb@')"
+
+	if [ "${DEBFILE}" = "${RPMFILE}" ]; then
+		DEBFILE="${RPMFILE}.deb"
+	fi
+fi
+
+WORKDIR="${TMPDIR:-/tmp}/rpm2deb-$$${RANDOM}${RANDOM}${RANDOM}"
+TMPCPIOFILE="${WORKDIR}/tmp.cpio"
+export WORKDIR TMPCPIOFILE
+
+mkdir -p "${WORKDIR}" "${WORKDIR}/deb" "${WORKDIR}/control" "${WORKDIR}/root" || exit 1
+chmod 700 "${WORKDIR}"
+
+rpm2cpio < "${RPMFILE}" > "${TMPCPIOFILE}"
+
+# Extract files
+(
+	cd "${WORKDIR}/root" || exit 1
+
+	cpio -i --no-absolute-filenames --quiet --make-directories < "${TMPCPIOFILE}"
+) || exit 1
+
+# Create control files
+(
+	cd "${WORKDIR}/root" || exit 1
+
+	## Create MD5 Sums
+	find . -type f | xargs md5sum > "${WORKDIR}/control/md5sums"
+
+	## Create Package description
+	rpm -q --queryformat 'Package: %{Name}\nVersion: %{Version}-%{Release}\nArchitecture: %{Arch}\nInstalled-Size: %{Size}\nMaintainer: %{Packager}\nDescription:' -p "${RPMFILE}" | sed 's@^Architecture: x86_64$@Architecture: amd64@' > "${WORKDIR}/control/control"
+	rpm -q --queryformat '%{Description}' -p "${RPMFILE}" | sed 's@^@ @;s@^ $@ .@' >> "${WORKDIR}/control/control"
+echo '' >> "${WORKDIR}/control/control"
+
+	## Create tarball with all data
+	cd "${WORKDIR}/control" || exit 1
+	tar -zcf "${WORKDIR}/deb/control.tar.gz" *
+) || exit 1
+
+# Create debian-binary
+echo '2.0' > "${WORKDIR}/deb/debian-binary"
+
+# Create Data archive
+(
+	cd "${WORKDIR}/root" || exit 1
+
+	cpio -i --list --quiet < "${TMPCPIOFILE}" > "${WORKDIR}/rpm-filelist"
+
+	tar --files-from "${WORKDIR}/rpm-filelist" -cf - | tardy -User root -Group root | gzip -9c > "${WORKDIR}/deb/data.tar.gz" 
+) || exit 1
+
+# Create Debian package
+(
+	cd "${WORKDIR}/deb" || exit 1
+
+	ar rcu "${WORKDIR}/tmp.deb" debian-binary control.tar.gz data.tar.gz
+)
+
+cp "${WORKDIR}/tmp.deb" "${DEBFILE}"
+
+rm -rf "${WORKDIR}"

@@ -1,0 +1,7 @@
+<pkg-contents spec="1.12">
+	<f n="libcackey.dylib" o="root" g="admin" p="33261" pt="@@BUILDROOTDIR@@/macbuild/@@OSXVERSION@@/libcackey.dylib" m="false" t="file">
+		<mod>owner</mod>
+		<mod>mode</mod>
+		<mod>group</mod>
+	</f>
+</pkg-contents>

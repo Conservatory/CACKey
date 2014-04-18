@@ -1,0 +1,77 @@
+#! /bin/bash
+
+PATH="${PATH}:/sbin:/usr/sbin:/usr/local/sbin"
+export PATH
+
+VERSION="$1"
+
+if [ -z "${VERSION}" ]; then
+	echo 'Usage: make-release <cackey_version>' >&2
+	exit 1
+fi
+
+for dir in ../../archive/ ../archive/; do
+	CACKEY_TARBALL="$(readlink -f "${dir}/cackey-${VERSION}.tar.gz")"
+
+	if [ -f "${CACKEY_TARBALL}" ]; then
+		break
+	fi
+done
+
+# Create RPM, SRPM, and Slackware package
+## Create RPM/SRPM
+mkdir -p ~/rpmbuild/SPECS ~/rpmbuild/SOURCES
+
+cp "${CACKEY_TARBALL}" ~/rpmbuild/SOURCES/ || exit 1
+tar -xOf "${CACKEY_TARBALL}" cackey-${VERSION}/cackey.spec > ~/rpmbuild/SPECS/cackey-${VERSION}.spec || exit 1
+
+rpmbuild -ba ~/rpmbuild/SPECS/cackey-${VERSION}.spec || exit 1
+
+# Create Debian package from RPM
+mkdir -p ~/rpmbuild/DEB
+"$(dirname "$0")/rpm2deb" ~/rpmbuild/RPMS/i386/cackey-${VERSION}-1.i386.rpm ~/rpmbuild/DEB/cackey_${VERSION}-1_i386.deb
+
+## Create Slackware package
+mkdir -p ~/rpmbuild/TGZ
+
+WORKDIR="${TMPDIR:-/tmp}/cackey-build-$$${RANDOM}${RANDOM}${RANDOM}"
+WORKDIRINSTROOT="${WORKDIR}/root"
+export WORKDIR WORKDIRINSTROOT
+
+mkdir -p "${WORKDIR}" "${WORKDIRINSTROOT}"
+cd "${WORKDIR}" || exit 1
+
+tar -xf "${CACKEY_TARBALL}"
+
+cd "cackey-${VERSION}" || exit 1
+
+./configure --prefix=/usr
+make
+make install DESTDIR="${WORKDIRINSTROOT}"
+
+mkdir "${WORKDIRINSTROOT}/install"
+cat << __EOF__ > "${WORKDIRINSTROOT}/install/slack-desc"
+cackey: Goverment Smartcard PKCS#11 Provider
+cackey:
+cackey: CACKey provides a standard interface (PKCS#11) for smartcards connected
+cackey: to a PC/SC compliant reader.  It performs a similar function to
+cackey: "CoolKey", but only supports Government Smartcards.  It supports all
+cackey: Government Smartcards that implement the Government Smartcard
+cackey: Interoperability Specification (GSC-IS) v2.1 or newer.
+cackey:
+cackey:
+cackey:
+cackey:
+__EOF__
+cat << __EOF__ > "${WORKDIRINSTROOT}/install/slack-required"
+pcsc-lite
+__EOF__
+
+cd "${WORKDIRINSTROOT}" || exit 1
+makepkg -l y -c n "${WORKDIR}/cackey-${VERSION}-i486-1.tgz"
+gzip -dc "${WORKDIR}/cackey-${VERSION}-i486-1.tgz" | tardy -User root -Group root | gzip -9 > "${WORKDIR}/cackey-${VERSION}-i486-1.tgz.new"
+mv "${WORKDIR}/cackey-${VERSION}-i486-1.tgz.new" "${WORKDIR}/cackey-${VERSION}-i486-1.tgz"
+cp "${WORKDIR}/cackey-${VERSION}-i486-1.tgz" ~/rpmbuild/TGZ
+
+# Cleanup
+rm -rf "${WORKDIR}"
