@@ -54,9 +54,10 @@ See LICENCE for more details.
 	are welcome.
 
 ```
-        $ cd build/cackey_win32_build
-        $ sh ./build.sh
+        $ sh build/cackey_win64_build/build.sh
 ```        
+        This will create 64-bit libraries named libcackey.dll and libcackey_g.dll.  
+
 
 ### Usage:
 	The libraries "libcackey.so" and "libcackey_g.so" are RSA PKCS#11
