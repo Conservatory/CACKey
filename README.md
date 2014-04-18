@@ -49,9 +49,9 @@ See LICENCE for more details.
 
 ### Compiling for Windows:
 
-	Windows libraries can be compiled on POSIX systems using the
-	mingw toolchain.  Patches to support other build environments 
-	are welcome.
+	32-bit and 64-bit Windows libraries can be compiled on POSIX systems using the
+	mingw toolchain.  The 32-bit binaries will require extracting winscard.dll and 
+	winscard.lib from the Microsoft Platform SDK to 'build/cackey_win32_build/lib/'.
 
 ```
         $ sh build/cackey_win64_build/build.sh
