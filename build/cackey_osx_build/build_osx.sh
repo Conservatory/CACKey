@@ -16,7 +16,7 @@ usage() {
 	echo "    leopard  - (Builds Universal 10.5 Library for PPCG4/i386)"
 	echo "    snowleopard  - (Builds Universal 10.6 Library for i386/x86_64)"
 	echo "    lion  - (Builds Universal 10.7 Library for i386/x86_64)"
-	echo "    sltomav - (Builds Universal 10.6/10.7/10.8/10.9 Library for i386/x86_64)"
+	echo "    sltoyos - (Builds Universal 10.6/10.7/10.8/10.9/10.10 Library for i386/x86_64)"
 	echo "    all - (Builds for all supported targets)"
 	echo "    clean - (Cleans up)"
 	echo "Run from CACKey Build Root."
@@ -45,7 +45,7 @@ makedir() {
 		mkdir macbuild/Leopard
 		mkdir macbuild/Snowleopard
 		mkdir macbuild/Lion
-		mkdir macbuild/Sltomav
+		mkdir macbuild/Sltoyos
 		mkdir macbuild/pkg
 	fi
 	if [ ! -f config.guess ]; then
@@ -117,7 +117,7 @@ lion() {
 }
 
 # Build function for Snow Leopard/Lion/Mountain Lion
-sltomav() {
+sltoyos() {
 	makedir
 	HEADERS=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/Versions/A/Headers/
 	LIBRARY=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/PCSC
@@ -125,7 +125,7 @@ sltomav() {
 	ARCHLIST=""
 	DLIB=""
 	DARCHLIST=""
-	OSX=Sltomav
+	OSX=Sltoyos
 	PKTARGETOS=3
 	CUROSXVER=10.6
 	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
@@ -136,7 +136,7 @@ sltomav() {
 }
 
 # Build function for Snow Leopard/Lion/Mountain Lion
-sltomav() {
+sltoyos() {
 	makedir
 	HEADERS=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/Versions/A/Headers/
 	LIBRARY=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/PCSC
@@ -144,7 +144,7 @@ sltomav() {
 	ARCHLIST=""
 	DLIB=""
 	DARCHLIST=""
-	OSX=Sltomav
+	OSX=Sltoyos
 	PKTARGETOS=3
 	CUROSXVER=10.6
 	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
@@ -232,8 +232,8 @@ pkgbuild() {
 		cat build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml | sed 's|for Mac OS X Snowleopard|for Mac OS X SnowLeopard|g' > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new
 		mv build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml
 	fi
-	if [ ${OSX} == "Sltomav" ]; then
-		cat build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml | sed 's|for Mac OS X Sltomav|for Mac OS X SLtoMav|g' > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new
+	if [ ${OSX} == "Sltoyos" ]; then
+		cat build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml | sed 's|for Mac OS X Sltoyos|for Mac OS X SLtoYos|g' > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new
 		mv build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml
 	fi
 	/Developer/Applications/Utilities/PackageMaker.app/Contents/MacOS/PackageMaker -d build/cackey_osx_build/${OSX}_pmbuild.pmdoc -o macbuild/pkg/CACKey_${CACKEY_VERSION}_${OSX}.${EXT}
@@ -270,16 +270,16 @@ case "$1" in
 		exit $?
 	;;
 	
-	"sltomav")
+	"sltoyos")
 		./autogen.sh
-		sltomav
+		sltoyos
 		exit $?
 	;;
 
 	"all")
 		./autogen.sh
 		leopard
-		sltomav
+		sltoyos
 		echo ""
 		echo "All builds complete."
 		exit $?
