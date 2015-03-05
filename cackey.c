@@ -2754,7 +2754,7 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
  */
 static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identity *identity, unsigned char *buf, size_t buflen, unsigned char *outbuf, size_t outbuflen, int padInput, int unpadOutput) {
 	cackey_pcsc_id_type id_type;
-	unsigned char dyn_auth_template[10];
+	unsigned char dyn_auth_template[10], *dyn_auth_tmpbuf;
 	unsigned char *tmpbuf, *tmpbuf_s, *outbuf_s, *outbuf_p;
 	unsigned char bytes_to_send, p1, class;
 	unsigned char blocktype;
@@ -2889,7 +2889,18 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 			dyn_auth_template[8] = (tmpbuflen & 0xff00) >> 8;
 			dyn_auth_template[9] = tmpbuflen & 0x00ff;
 
-			send_ret = cackey_send_apdu(slot, 0x10, NISTSP800_73_3_INSTR_GENAUTH, NISTSP800_78_3_ALGO_RSA2048, identity->pcsc_identity->card.piv.key_id, sizeof(dyn_auth_template), dyn_auth_template, 0x00, NULL, NULL, NULL);
+			dyn_auth_tmpbuf = malloc(tmpbuflen + sizeof(dyn_auth_template));
+			memcpy(dyn_auth_tmpbuf, dyn_auth_template, sizeof(dyn_auth_template));
+			memcpy(dyn_auth_tmpbuf + sizeof(dyn_auth_template), tmpbuf, tmpbuflen);
+
+			if (free_tmpbuf) {
+				free(tmpbuf);
+			}
+
+			tmpbuflen += sizeof(dyn_auth_template);
+			tmpbuf = dyn_auth_tmpbuf;
+			free_tmpbuf = 1;
+
 			break;
 		case CACKEY_ID_TYPE_CERT_ONLY:
 			break;
