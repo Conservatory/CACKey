@@ -1751,6 +1751,12 @@ static unsigned char *cackey_read_bertlv_tag(unsigned char *buffer, size_t *buff
 	buffer_len = *outbuffer_len_p;
 	outbuffer_len = *outbuffer_len_p;
 
+	if (buffer_len < 2) {
+		CACKEY_DEBUG_PRINTF("buffer_len is less than 2, so we can't read any tag.  Returning in failure.");
+
+		return(NULL);
+	}
+
 	buffer_p = buffer;
 	if (buffer_p[0] != tag) {
 		CACKEY_DEBUG_PRINTF("Tag found was not tag expected.  Tag = %02x, Expected = %02x.  Returning in failure.", (unsigned int) buffer_p[0], tag);
@@ -3024,7 +3030,7 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 			outbuf_len = retval;
 			outbuf_p = cackey_read_bertlv_tag(outbuf, &outbuf_len, 0x82, NULL,  &outbuf_len);
 			if (outbuf_p == NULL) {
-				CACKEY_DEBUG_PRINTF("Response from PIV for GENERATE AUTHENTICATION was not a 0x82 with then 0x7C tag, returning in failure");
+				CACKEY_DEBUG_PRINTF("Response from PIV for GENERATE AUTHENTICATION was not a 0x82 within a 0x7C tag, returning in failure");
 
 				return(-1);
 			}
