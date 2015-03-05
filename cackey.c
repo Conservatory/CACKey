@@ -2966,14 +2966,6 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 				return(CACKEY_PCSC_E_NEEDLOGIN);
 			}
 
-			if (respcode == 0x6E00) {
-				CACKEY_DEBUG_PRINTF("Got \"WRONG CLASS\", this means we are talking to the wrong object (likely because the card went away) -- resetting");
-
-				cackey_mark_slot_reset(slot);
-
-				return(CACKEY_PCSC_E_NEEDLOGIN);
-			}
-
 			if (send_ret == CACKEY_PCSC_E_TOKENABSENT) {
 				CACKEY_DEBUG_PRINTF("Token absent.  Returning TOKENABSENT");
 
