@@ -135,21 +135,29 @@ static int asn1_x509_read_object(unsigned char *buf, size_t buflen, struct x509_
 
 	read_ret = asn1_x509_read_asn1_object(buf, buflen, &outbuf->wholething, NULL);
 	if (read_ret != 0) {
+		CACKEY_DEBUG_PRINTF("Failed at reading the contents from the wrapper")
+
 		return(-1);
 	}
 
 	read_ret = asn1_x509_read_asn1_object(outbuf->wholething.contents, outbuf->wholething.size, &outbuf->certificate, NULL);
 	if (read_ret != 0) {
+		CACKEY_DEBUG_PRINTF("Failed at reading the certificate from the contents");
+
 		return(-1);
 	}
 
 	read_ret = asn1_x509_read_asn1_object(outbuf->certificate.contents, outbuf->certificate.size, &outbuf->version, &outbuf->serial_number, &outbuf->signature_algo, &outbuf->issuer, &outbuf->validity, &outbuf->subject, &outbuf->pubkeyinfo, NULL);
 	if (read_ret != 0) {
+		CACKEY_DEBUG_PRINTF("Failed at reading the certificate components from the certificate");
+
 		return(-1);
 	}
 
 	read_ret = asn1_x509_read_asn1_object(outbuf->pubkeyinfo.contents, outbuf->pubkeyinfo.size, &outbuf->pubkey_algoid, &outbuf->pubkey, NULL);
 	if (read_ret != 0) {
+		CACKEY_DEBUG_PRINTF("Failed at reading the public key from the certificate components");
+
 		return(-1);
 	}
 
@@ -194,6 +202,9 @@ static ssize_t x509_to_serial(void *x509_der_buf, size_t x509_der_buf_len, void 
 
 	read_ret = asn1_x509_read_object(x509_der_buf, x509_der_buf_len, &x509);
 	if (read_ret != 0) {
+		CACKEY_DEBUG_PRINTF("Unable to read serial number from a %lu byte buffer", x509_der_buf_len);
+		CACKEY_DEBUG_PRINTBUF("X.509 DER:", x509_der_buf, x509_der_buf_len);
+
 		return(-1);
 	}
 

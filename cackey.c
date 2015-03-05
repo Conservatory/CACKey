@@ -67,14 +67,6 @@
 #include "sha1.h"
 #include "md5.h"
 
-/*
- * Include these source files in this translation unit so that we can bind to
- * functions and not include any symbols in the output shared object.
- */
-#include "asn1-x509.c"
-#include "sha1.c"
-#include "md5.c"
-
 #ifndef CACKEY_CRYPTOKI_VERSION_CODE
 #  define CACKEY_CRYPTOKI_VERSION_CODE 0x021e00
 #endif
@@ -230,6 +222,7 @@ static unsigned long CACKEY_DEBUG_GETTIME(void) {
 	unsigned long idx; \
 	int snprintf_ret; \
 	TMPBUF = (unsigned char *) (x); \
+	buf_user[0] = 0; \
 	buf_user_p = buf_user; \
 	buf_user_size = sizeof(buf_user); \
 	for (idx = 1; idx < (y); idx++) { \
@@ -721,6 +714,14 @@ static const char *CACKEY_DEBUG_FUNC_ATTRIBUTE_TO_STR(CK_ATTRIBUTE_TYPE attr) {
 #  define CACKEY_DEBUG_FUNC_APPTYPE_TO_STR(x) "DEBUG_DISABLED"
 #  define CACKEY_DEBUG_FUNC_ATTRIBUTE_TO_STR(x) "DEBUG_DISABLED"
 #endif
+
+/*
+ * Include these source files in this translation unit so that we can bind to
+ * functions and not include any symbols in the output shared object.
+ */
+#include "asn1-x509.c"
+#include "sha1.c"
+#include "md5.c"
 
 typedef enum {
 	CACKEY_ID_TYPE_CAC,
@@ -1218,7 +1219,7 @@ static cackey_ret cackey_connect_card(struct cackey_slot *slot) {
 
 	/* Connect to reader, if needed */
 	if (!slot->pcsc_card_connected) {
-		CACKEY_DEBUG_PRINTF("SCardConnect(%s) called", slot->pcsc_reader);
+		CACKEY_DEBUG_PRINTF("SCardConnect(%s) called for slot %p", slot->pcsc_reader, slot);
 		scard_conn_ret = SCardConnect(*cackey_pcsc_handle, slot->pcsc_reader, SCARD_SHARE_SHARED, SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1, &slot->pcsc_card, &protocol);
 
 		if (scard_conn_ret == SCARD_E_PROTO_MISMATCH) {
@@ -2431,16 +2432,20 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 	unsigned char ccc_aid[] = {GSCIS_AID_CCC}, piv_aid[] = {NISTSP800_73_3_PIV_AID};
 	unsigned char *piv_oid, piv_oid_pivauth[] = {NISTSP800_73_3_OID_PIVAUTH}, piv_oid_signature[] = {NISTSP800_73_3_OID_SIGNATURE}, piv_oid_keymgt[] = {NISTSP800_73_3_OID_KEYMGT};
 	unsigned char curr_aid[7];
-	unsigned char buffer[8192], *buffer_p;
+	unsigned char buffer[8192], *buffer_p, *tmpbuf;
 	unsigned long outidx = 0;
 	char *piv_label;
 	cackey_ret transaction_ret;
 	ssize_t read_ret;
-	size_t buffer_len;
+	size_t buffer_len, tmpbuflen;
 	int certs_resizable;
 	int send_ret, select_ret;
 	int piv_key, piv = 0;
 	int idx;
+#ifdef HAVE_LIBZ
+	int uncompress_ret;
+	z_stream gzip_stream;
+#endif
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -2558,12 +2563,60 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 
 			if (buffer_p == NULL) {
 				CACKEY_DEBUG_PRINTF("Reading certificate from BER-TLV response failed, skipping key %i", idx);
+
 				free(curr_id->certificate);
+
+				curr_id->certificate = NULL;
 
 				outidx--;
 
 				continue;
 			}
+
+#ifdef HAVE_LIBZ
+			if (curr_id->certificate_len > 4) {
+				if (memcmp(curr_id->certificate, "\x1f\x8b\x08\x00", 4) == 0) {
+					tmpbuflen = curr_id->certificate_len * 2;
+					tmpbuf = malloc(tmpbuflen);
+
+					CACKEY_DEBUG_PRINTBUF("Attempting to decompress:", curr_id->certificate, curr_id->certificate_len);
+
+					gzip_stream.zalloc = NULL;
+					gzip_stream.zfree = NULL;
+					gzip_stream.opaque = NULL;
+
+					gzip_stream.next_in  = curr_id->certificate;
+					gzip_stream.avail_in = curr_id->certificate_len;
+					gzip_stream.next_out = tmpbuf;
+					gzip_stream.avail_out = tmpbuflen;
+
+					uncompress_ret = inflateInit(&gzip_stream);
+					if (uncompress_ret == Z_OK) {
+						uncompress_ret = inflateReset2(&gzip_stream, 31);
+					}
+					if (uncompress_ret == Z_OK) {
+						uncompress_ret = inflate(&gzip_stream, 0);
+					}
+					if (uncompress_ret == Z_STREAM_END) {
+						uncompress_ret = inflateEnd(&gzip_stream);
+					} else {
+						uncompress_ret = Z_DATA_ERROR;
+					}
+					if (uncompress_ret == Z_OK) {
+						CACKEY_DEBUG_PRINTBUF("Decompressed to:", tmpbuf, tmpbuflen);
+
+						free(curr_id->certificate);
+
+						curr_id->certificate = tmpbuf;
+						curr_id->certificate_len = tmpbuflen;
+					} else {
+						CACKEY_DEBUG_PRINTF("Decompressing failed! uncompress() returned %i", uncompress_ret);
+
+						free(tmpbuf);
+					}
+				}
+			}
+#endif
 		}
 	} else {
 		/* Read all the applets from the CCC's TLV */
@@ -2639,7 +2692,11 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 				if (outidx >= *count) {
 					if (certs_resizable) {
 						*count *= 2;
-						certs = realloc(certs, sizeof(*certs) * (*count));
+						if (*count != 0) {
+							certs = realloc(certs, sizeof(*certs) * (*count));
+						} else {
+							certs = NULL;
+						}
 					} else {
 						break;
 					}
@@ -2659,7 +2716,11 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 	*count = outidx;
 
 	if (certs_resizable) {
-		certs = realloc(certs, sizeof(*certs) * (*count));
+		if (*count != 0) {
+			certs = realloc(certs, sizeof(*certs) * (*count));
+		} else {
+			certs = NULL;
+		}
 	}
 
 	slot->cached_certs = cackey_copy_certs(NULL, certs, *count);
