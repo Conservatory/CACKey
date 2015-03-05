@@ -2609,6 +2609,8 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 						uncompress_ret = Z_DATA_ERROR;
 					}
 					if (uncompress_ret == Z_OK) {
+						tmpbuflen = gzip_stream.total_out;
+
 						CACKEY_DEBUG_PRINTBUF("Decompressed to:", tmpbuf, tmpbuflen);
 
 						free(curr_id->certificate);
