@@ -13,3 +13,5 @@ install-sh
 libcackey_g.so
 libcackey.so
 libcackey.syms
+build/certs
+test
