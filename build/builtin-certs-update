@@ -1,0 +1,11 @@
+#! /bin/bash
+
+set -e
+
+ourdir="$(dirname "$(which "$0")")"
+cd "${outdir}" || exit 1
+
+make -C certs/dod distclean all
+make -C certs/federal distclean all
+
+./certs-to-c certs/*/*.crt > ../cackey_builtin_certs.h
