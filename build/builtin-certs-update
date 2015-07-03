@@ -8,4 +8,10 @@ cd "${outdir}" || exit 1
 make -C certs/dod distclean all
 make -C certs/federal distclean all
 
-./certs-to-c certs/*/*.crt > ../cackey_builtin_certs.h
+if [ "$1" = '--commercial' ]; then
+	commercial='commercial'
+else
+	commercial='SKIP'
+fi
+
+./certs-to-c certs/{dod,federal,$commercial}/*.crt > ../cackey_builtin_certs.h
