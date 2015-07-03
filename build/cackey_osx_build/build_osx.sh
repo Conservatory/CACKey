@@ -14,7 +14,7 @@ usage() {
 	echo "Usage: build_osx.sh <target>"
 	echo Where target is one of:
 	echo "    leopard  - (Builds Universal 10.5 Library for PPCG4/i386)"
-	echo "    sltoyos - (Builds Universal 10.6/10.7/10.8/10.9/10.10 Library for i386/x86_64)"
+	echo "    slandup - (Builds Universal 10.6 and Up Library for i386/x86_64)"
 	echo "    all - (Builds for all supported targets)"
 	echo "    clean - (Cleans up)"
 	echo "Run from CACKey Build Root."
@@ -47,7 +47,7 @@ makedir() {
 	if [ ! -d macbuild ]; then
 		mkdir macbuild
 		mkdir macbuild/Leopard
-		mkdir macbuild/Sltoyos
+		mkdir macbuild/Slandup
 		mkdir macbuild/pkg
 	fi
 	if [ ! -f config.guess ]; then
@@ -81,7 +81,7 @@ leopard() {
 }
 
 # Build function for Snow Leopard/Lion/Mountain Lion/Mavericks/Yosemite
-sltoyos() {
+slandup() {
 	makedir
 	HEADERS=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/Versions/A/Headers/
 	LIBRARY=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/PCSC.framework/PCSC
@@ -89,7 +89,7 @@ sltoyos() {
 	ARCHLIST=""
 	DLIB=""
 	DARCHLIST=""
-	OSX=Sltoyos
+	OSX=Slandup
 	PKTARGETOS=3
 	CUROSXVER=10.6
 	for HOST in i386-apple-darwin10 x86_64-apple-darwin10; do
@@ -169,8 +169,8 @@ pkgbuild() {
 		mv build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}.1 build/cackey_osx_build/${OSX}_pmbuild.pmdoc/${PMDOC}
 	done
 	EXT=pkg
-	if [ ${OSX} == "Sltoyos" ]; then
-		cat build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml | sed 's|for Mac OS X Sltoyos|for Mac OS X SLtoYos|g' > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new
+	if [ ${OSX} == "Slandup" ]; then
+		cat build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml | sed 's|for Mac OS X Slandup|for Mac OS X SLandUp|g' > build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new
 		mv build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml.new build/cackey_osx_build/${OSX}_pmbuild.pmdoc/index.xml
 	fi
 	/Developer/Applications/Utilities/PackageMaker.app/Contents/MacOS/PackageMaker -d build/cackey_osx_build/${OSX}_pmbuild.pmdoc -o macbuild/pkg/CACKey_${CACKEY_VERSION}_${OSX}.${EXT}
@@ -195,16 +195,16 @@ case "$1" in
 		exit $?
 	;;
 
-	"sltoyos")
+	"slandup")
 		./autogen.sh
-		sltoyos
+		slandup
 		exit $?
 	;;
 
 	"all")
 		./autogen.sh
 		leopard
-		sltoyos
+		slandup
 		echo ""
 		echo "All builds complete."
 		exit $?
