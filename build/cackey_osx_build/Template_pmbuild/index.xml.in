@@ -69,9 +69,9 @@ following licenses:\
 \f0\fs26 \cf0 Thank you for choosing to install CACKey.\
 \
 To use CACKey, install /Library/CACKey/libcackey.dylib or\
-/usr/lib/pkcs11/cackey.dylib as a security module into any application that can use a PKCS#11 provider.\
+/usr/local/lib/pkcs11/cackey.dylib as a security module into any application that can use a PKCS#11 provider.\
 \
-A PKCS11 Connector for Tokend (Keychain Access) will be installed in /System/Library/Security/tokend.\
+A PKCS11 Connector for Tokend (Keychain Access) will be installed in /Library/Security/tokend.\
 To use, be sure to import the certificate authorities into Keychain Access.\
 \
 A debug version, /Library/CACKey/libcackey_g.dylib is provided if debug output is necessary.}]]>
