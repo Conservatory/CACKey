@@ -85,6 +85,7 @@
 #define GSCIS_INSTR_GET_CHALLENGE     0x84
 #define GSCIS_INSTR_INTERNAL_AUTH     0x88
 #define GSCIS_INSTR_VERIFY            0x20
+#define GSCIS_INSTR_CHANGE_REFERENCE  0x24
 #define GSCIS_INSTR_SIGN              0x2A
 #define GSCIS_INSTR_GET_PROP          0x56
 #define GSCIS_INSTR_GET_ACR           0x4C
@@ -1533,7 +1534,7 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 	/* Begin Smartcard Transaction */
 	cackey_begin_transaction(slot);
 
-	if (class == GSCIS_CLASS_ISO7816 && instruction == GSCIS_INSTR_VERIFY && p1 == 0x00) {
+	if (class == GSCIS_CLASS_ISO7816 && (instruction == GSCIS_INSTR_VERIFY || instruction == GSCIS_INSTR_CHANGE_REFERENCE) && p1 == 0x00) {
 		CACKEY_DEBUG_PRINTF("Sending APDU: <<censored>>");
 	} else {
 		CACKEY_DEBUG_PRINTBUF("Sending APDU:", xmit_buf, xmit_len);
@@ -3142,6 +3143,103 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
  *     ...
  *
  */
+static cackey_ret cackey_set_pin(struct cackey_slot *slot, unsigned char *old_pin, unsigned long old_pin_len, unsigned char *pin, unsigned long pin_len) {
+	struct cackey_pcsc_identity *pcsc_identities;
+	unsigned char cac_pin[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+	unsigned char old_cac_pin[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+	unsigned char pin_update[sizeof(cac_pin) + sizeof(old_cac_pin)];
+	unsigned long num_certs;
+	uint16_t response_code;
+	int tries_remaining;
+	int send_ret;
+	int key_reference = 0x00;
+
+	/* Apparently, CAC PINs are *EXACTLY* 8 bytes long -- pad with 0xFF if too short */
+	if (pin_len >= 8) {
+		memcpy(cac_pin, pin, 8);
+	} else {
+		memcpy(cac_pin, pin, pin_len);
+	}
+
+	if (old_pin_len >= 8) {
+		memcpy(old_cac_pin, old_pin, 8);
+	} else {
+		memcpy(old_cac_pin, old_pin, old_pin_len);
+	}
+
+	/* Concatenate both PINs together to send as a single instruction */
+	memcpy(pin_update, old_cac_pin, sizeof(old_cac_pin));
+	memcpy(pin_update + sizeof(old_cac_pin), cac_pin, sizeof(cac_pin));
+
+	/* Reject PINs which are too short */
+	if (pin_len < 5) {
+		CACKEY_DEBUG_PRINTF("Rejecting New PIN which is too short (length = %lu, must be atleast 5)", pin_len);
+
+		return(CACKEY_PCSC_E_BADPIN);
+	}
+
+	if (old_pin_len < 5) {
+		CACKEY_DEBUG_PRINTF("Rejecting Old PIN which is too short (length = %lu, must be atleast 5)", old_pin_len);
+
+		return(CACKEY_PCSC_E_BADPIN);
+	}
+
+	/* PIV authentication uses a "key_reference" of 0x80 */
+	pcsc_identities = cackey_read_certs(slot, NULL, &num_certs);
+	if (num_certs > 0 && pcsc_identities != NULL) {
+		switch (pcsc_identities[0].id_type) {
+			case CACKEY_ID_TYPE_PIV:
+				CACKEY_DEBUG_PRINTF("We have PIV card, so we will attempt to authenticate using the PIV Application key reference");
+
+				key_reference = 0x80;
+				break;
+			default:
+				break;
+		}
+
+		cackey_free_certs(pcsc_identities, num_certs, 1);
+	}
+
+	/* Issue a Set PIN (CHANGE REFERENCE) */
+	send_ret = cackey_send_apdu(slot, GSCIS_CLASS_ISO7816, GSCIS_INSTR_CHANGE_REFERENCE, 0x00, key_reference, sizeof(pin_update), pin_update, 0x00, &response_code, NULL, NULL);
+
+	if (send_ret != CACKEY_PCSC_S_OK) {
+		if ((response_code & 0x63C0) == 0x63C0) {
+			tries_remaining = (response_code & 0xF);
+
+			CACKEY_DEBUG_PRINTF("PIN Verification failed, %i tries remaining", tries_remaining);
+
+			return(CACKEY_PCSC_E_BADPIN);
+		}
+
+		if (response_code == 0x6983) {
+			CACKEY_DEBUG_PRINTF("Unable to set PIN, device is locked or changing the PIN is disabled");
+
+			return(CACKEY_PCSC_E_LOCKED);
+		}
+
+		return(CACKEY_PCSC_E_GENERIC);
+	}
+
+	CACKEY_DEBUG_PRINTF("PIN Change succeeded");
+
+	return(CACKEY_PCSC_S_OK);
+}
+
+/*
+ * SYNPOSIS
+ *     ...
+ *
+ * ARGUMENTS
+ *     ...
+ *
+ * RETURN VALUE
+ *     ...
+ *
+ * NOTES
+ *     ...
+ *
+ */
 static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, unsigned long pin_len, int *tries_remaining_p) {
 	struct cackey_pcsc_identity *pcsc_identities;
 	unsigned char cac_pin[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -4175,6 +4273,59 @@ static struct cackey_identity *cackey_read_identities(struct cackey_slot *slot, 
 	return(NULL);
 }
 
+static cackey_ret cackey_get_pin(char *pinbuf) {
+	FILE *pinfd;
+	char *fgets_ret;
+	int pclose_ret;
+
+	if (cackey_pin_command == NULL) {
+		return(CACKEY_PCSC_E_GENERIC);
+	}
+
+	if (pinbuf == NULL) {
+		return(CACKEY_PCSC_E_GENERIC);
+	}
+
+	CACKEY_DEBUG_PRINTF("CACKEY_PIN_COMMAND = %s", cackey_pin_command);
+
+	pinfd = popen(cackey_pin_command, "r");
+	if (pinfd == NULL) {
+		CACKEY_DEBUG_PRINTF("Error.  %s: Unable to run", cackey_pin_command);
+
+		return(CACKEY_PCSC_E_BADPIN);
+	}
+
+	fgets_ret = fgets(pinbuf, 32, pinfd);
+	if (fgets_ret == NULL) {
+		pinbuf[0] = '\0';
+	}
+
+	pclose_ret = pclose(pinfd);
+	if (pclose_ret == -1 && errno == ECHILD) {
+		CACKEY_DEBUG_PRINTF("Notice.  pclose() indicated it could not get the status of the child, assuming it succeeeded !");
+
+		pclose_ret = 0;
+	}
+
+	if (pclose_ret != 0) {
+		CACKEY_DEBUG_PRINTF("Error.  %s: exited with non-zero status of %i", cackey_pin_command, pclose_ret);
+
+		return(CACKEY_PCSC_E_BADPIN);
+	}
+
+	if (strlen(pinbuf) < 1) {
+		CACKEY_DEBUG_PRINTF("Error.  %s: returned no data", cackey_pin_command);
+
+		return(CACKEY_PCSC_E_BADPIN);
+	}
+
+	if (pinbuf[strlen(pinbuf) - 1] == '\n') {
+		pinbuf[strlen(pinbuf) - 1] = '\0';
+	}
+
+	return(CACKEY_PCSC_S_OK);
+}
+
 CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 	CK_C_INITIALIZE_ARGS CK_PTR args;
 	uint32_t idx, highest_slot;
@@ -4991,8 +5142,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_InitPIN)(CK_SESSION_HANDLE hSession, CK_UTF8CHAR_PTR
 	return(CKR_TOKEN_WRITE_PROTECTED);
 }
 
-/* We don't support this method. */
 CK_DEFINE_FUNCTION(CK_RV, C_SetPIN)(CK_SESSION_HANDLE hSession, CK_UTF8CHAR_PTR pOldPin, CK_ULONG ulOldPinLen, CK_UTF8CHAR_PTR pNewPin, CK_ULONG ulNewPinLen) {
+	char oldpinbuf[64], newpinbuf[64];
+	cackey_ret set_pin_ret, get_pin_ret;
+	CK_SLOT_ID slotID;
+	int mutex_retval;
+
 	CACKEY_DEBUG_PRINTF("Called.");
 
 	if (!cackey_initialized) {
@@ -5001,9 +5156,140 @@ CK_DEFINE_FUNCTION(CK_RV, C_SetPIN)(CK_SESSION_HANDLE hSession, CK_UTF8CHAR_PTR 
 		return(CKR_CRYPTOKI_NOT_INITIALIZED);
 	}
 
-	CACKEY_DEBUG_PRINTF("Returning CKR_FUNCTION_NOT_SUPPORTED (%i)", CKR_FUNCTION_NOT_SUPPORTED);
+	mutex_retval = cackey_mutex_lock(cackey_biglock);
+	if (mutex_retval != 0) {
+		CACKEY_DEBUG_PRINTF("Error.  Locking failed.");
 
-	return(CKR_FUNCTION_NOT_SUPPORTED);
+		return(CKR_GENERAL_ERROR);
+	}
+
+	if (!cackey_sessions[hSession].active) {
+		cackey_mutex_unlock(cackey_biglock);
+
+		CACKEY_DEBUG_PRINTF("Error.  Session not active.");
+		
+		return(CKR_SESSION_HANDLE_INVALID);
+	}
+
+	slotID = cackey_sessions[hSession].slotID;
+
+	if (slotID < 0 || slotID >= (sizeof(cackey_slots) / sizeof(cackey_slots[0]))) {
+		CACKEY_DEBUG_PRINTF("Error. Invalid slot requested (%lu), outside of valid range", slotID);
+
+		cackey_mutex_unlock(cackey_biglock);
+
+		return(CKR_GENERAL_ERROR);
+	}
+
+	if (cackey_slots[slotID].active == 0) {
+		CACKEY_DEBUG_PRINTF("Error. Invalid slot requested (%lu), slot not currently active", slotID);
+
+		cackey_mutex_unlock(cackey_biglock);
+
+		return(CKR_GENERAL_ERROR);
+	}
+
+	if (cackey_pin_command != NULL) {
+		/* Get old PIN */
+		get_pin_ret = cackey_get_pin(oldpinbuf);
+
+		if (get_pin_ret != CACKEY_PCSC_S_OK) {
+			CACKEY_DEBUG_PRINTF("Error while getting Old PIN, returning CKR_PIN_INCORRECT.");
+
+			cackey_mutex_unlock(cackey_biglock);
+			
+			return(CKR_PIN_INCORRECT);
+		}
+
+		pOldPin = (CK_UTF8CHAR_PTR) oldpinbuf;
+		ulOldPinLen = strlen(oldpinbuf);
+
+		/* Get new PIN */
+		get_pin_ret = cackey_get_pin(newpinbuf);
+
+		if (get_pin_ret != CACKEY_PCSC_S_OK) {
+			CACKEY_DEBUG_PRINTF("Error while getting New PIN, returning CKR_PIN_INVALID.");
+
+			cackey_mutex_unlock(cackey_biglock);
+			
+			return(CKR_PIN_INVALID);
+		}
+
+		pNewPin = (CK_UTF8CHAR_PTR) newpinbuf;
+		ulNewPinLen = strlen(newpinbuf);
+	}
+
+	if (pOldPin == NULL) {
+		CACKEY_DEBUG_PRINTF("Old PIN value is wrong (null).");
+
+		cackey_mutex_unlock(cackey_biglock);
+
+		return(CKR_PIN_INCORRECT);
+	}
+
+	if (ulOldPinLen == 0 || ulOldPinLen > 8) {
+		CACKEY_DEBUG_PRINTF("Old PIN length is wrong: %lu.", (unsigned long) ulOldPinLen);
+
+		cackey_mutex_unlock(cackey_biglock);
+
+		return(CKR_PIN_INCORRECT);
+	}
+
+	if (pNewPin == NULL) {
+		CACKEY_DEBUG_PRINTF("New PIN value is wrong (either NULL, or too long/short).");
+
+		cackey_mutex_unlock(cackey_biglock);
+
+		return(CKR_PIN_INVALID);
+	}
+
+	if (ulNewPinLen < 5 || ulNewPinLen > 8) {
+		CACKEY_DEBUG_PRINTF("New PIN length is wrong: %lu, must be atleast 5 and no more than 8.", (unsigned long) ulNewPinLen);
+
+		cackey_mutex_unlock(cackey_biglock);
+
+		return(CKR_PIN_LEN_RANGE);
+	}
+
+	set_pin_ret = cackey_set_pin(&cackey_slots[slotID], pOldPin, ulOldPinLen, pNewPin, ulNewPinLen);
+
+	if (set_pin_ret != CACKEY_PCSC_S_OK) {
+		if (cackey_pin_command == NULL) {
+			cackey_slots[slotID].token_flags |= CKF_LOGIN_REQUIRED;
+		}
+
+		if (set_pin_ret == CACKEY_PCSC_E_LOCKED) {
+			cackey_slots[slotID].token_flags |= CKF_USER_PIN_LOCKED;
+		}
+	}
+
+	mutex_retval = cackey_mutex_unlock(cackey_biglock);
+	if (mutex_retval != 0) {
+		CACKEY_DEBUG_PRINTF("Error.  Unlocking failed.");
+
+		return(CKR_GENERAL_ERROR);
+	}
+
+	switch (set_pin_ret) {
+		case CACKEY_PCSC_S_OK:
+			CACKEY_DEBUG_PRINTF("Successfully set PIN.");
+
+			return(CKR_OK);
+		case CACKEY_PCSC_E_BADPIN:
+			CACKEY_DEBUG_PRINTF("PIN was invalid.");
+
+			return(CKR_PIN_INVALID);
+		case CACKEY_PCSC_E_LOCKED:
+			CACKEY_DEBUG_PRINTF("Token is locked or this change is not permitted.");
+
+			return(CKR_PIN_LOCKED);
+		default:
+			CACKEY_DEBUG_PRINTF("Something else went wrong changing the PIN: %i", set_pin_ret);
+
+			return(CKR_GENERAL_ERROR);
+	}
+
+	return(CKR_GENERAL_ERROR);
 }
 
 CK_DEFINE_FUNCTION(CK_RV, C_OpenSession)(CK_SLOT_ID slotID, CK_FLAGS flags, CK_VOID_PTR pApplication, CK_NOTIFY notify, CK_SESSION_HANDLE_PTR phSession) {
@@ -5291,12 +5577,11 @@ CK_DEFINE_FUNCTION(CK_RV, C_SetOperationState)(CK_SESSION_HANDLE hSession, CK_BY
 
 CK_DEFINE_FUNCTION(CK_RV, _C_LoginMutexArg)(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen, int lock_mutex) {
 	CK_SLOT_ID slotID;
-	FILE *pinfd;
-	char *pincmd, pinbuf[64], *fgets_ret;
+	cackey_ret get_pin_ret;
+	char pinbuf[64];
 	int mutex_retval;
 	int tries_remaining;
 	int login_ret;
-	int pclose_ret;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -5359,65 +5644,21 @@ CK_DEFINE_FUNCTION(CK_RV, _C_LoginMutexArg)(CK_SESSION_HANDLE hSession, CK_USER_
 		return(CKR_GENERAL_ERROR);
 	}
 
-	pincmd = cackey_pin_command;
-	if (pincmd != NULL) {
-		CACKEY_DEBUG_PRINTF("CACKEY_PIN_COMMAND = %s", pincmd);
-
+	if (cackey_pin_command != NULL) {
 		if (pPin != NULL) {
 			CACKEY_DEBUG_PRINTF("Protected authentication path in effect and PIN provided !?");
 		}
 
-		pinfd = popen(pincmd, "r");
-		if (pinfd == NULL) {
-			CACKEY_DEBUG_PRINTF("Error.  %s: Unable to run", pincmd);
+		get_pin_ret = cackey_get_pin(pinbuf);
+
+		if (get_pin_ret != CACKEY_PCSC_S_OK) {
+			CACKEY_DEBUG_PRINTF("cackey_get_pin() returned in failure, assuming the PIN was incorrect.");
 
 			if (lock_mutex) {
 				cackey_mutex_unlock(cackey_biglock);
 			}
 
-			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
-
 			return(CKR_PIN_INCORRECT);
-		}
-
-		fgets_ret = fgets(pinbuf, sizeof(pinbuf), pinfd);
-		if (fgets_ret == NULL) {
-			pinbuf[0] = '\0';
-		}
-
-		pclose_ret = pclose(pinfd);
-		if (pclose_ret == -1 && errno == ECHILD) {
-			CACKEY_DEBUG_PRINTF("Notice.  pclose() indicated it could not get the status of the child, assuming it succeeeded !");
-
-			pclose_ret = 0;
-		}
-
-		if (pclose_ret != 0) {
-			CACKEY_DEBUG_PRINTF("Error.  %s: exited with non-zero status of %i", pincmd, pclose_ret);
-
-			if (lock_mutex) {
-				cackey_mutex_unlock(cackey_biglock);
-			}
-
-			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
-
-			return(CKR_PIN_INCORRECT);
-		}
-
-		if (strlen(pinbuf) < 1) {
-			CACKEY_DEBUG_PRINTF("Error.  %s: returned no data", pincmd);
-
-			if (lock_mutex) {
-				cackey_mutex_unlock(cackey_biglock);
-			}
-
-			CACKEY_DEBUG_PRINTF("Returning CKR_PIN_INCORRECT (%i)", (int) CKR_PIN_INCORRECT);
-
-			return(CKR_PIN_INCORRECT);
-		}
-
-		if (pinbuf[strlen(pinbuf) - 1] == '\n') {
-			pinbuf[strlen(pinbuf) - 1] = '\0';
 		}
 
 		pPin = (CK_UTF8CHAR_PTR) pinbuf;
