@@ -3143,6 +3143,108 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
  *     ...
  *
  */
+static cackey_ret cackey_token_present(struct cackey_slot *slot) {
+	cackey_ret pcsc_connect_ret;
+	DWORD reader_len = 0, state = 0, protocol = 0, atr_len;
+	BYTE atr[MAX_ATR_SIZE];
+	LONG status_ret, scard_reconn_ret;
+
+	CACKEY_DEBUG_PRINTF("Called.");
+
+	if (slot->internal) {
+		CACKEY_DEBUG_PRINTF("Returning token present (internal token)");
+
+		return(CACKEY_PCSC_S_TOKENPRESENT);
+	}
+
+	pcsc_connect_ret = cackey_connect_card(slot);
+	if (pcsc_connect_ret != CACKEY_PCSC_S_OK) {
+		CACKEY_DEBUG_PRINTF("Unable to connect to card, returning token absent");
+
+		return(CACKEY_PCSC_E_TOKENABSENT);
+	}
+
+	CACKEY_DEBUG_PRINTF("Calling SCardStatus() to determine card status");
+
+	atr_len = sizeof(atr);
+	status_ret = SCardStatus(slot->pcsc_card, NULL, &reader_len, &state, &protocol, atr, &atr_len);
+
+	if (status_ret == SCARD_E_INVALID_HANDLE) {
+		CACKEY_DEBUG_PRINTF("SCardStatus() returned SCARD_E_INVALID_HANDLE, marking is not already connected and trying again");
+		cackey_mark_slot_reset(slot);
+
+		pcsc_connect_ret = cackey_connect_card(slot);
+		if (pcsc_connect_ret != CACKEY_PCSC_S_OK) {
+			CACKEY_DEBUG_PRINTF("Unable to connect to card, returning token absent");
+
+			return(CACKEY_PCSC_E_TOKENABSENT);
+		}
+
+		CACKEY_DEBUG_PRINTF("Calling SCardStatus() again");
+
+		atr_len = sizeof(atr);
+		status_ret = SCardStatus(slot->pcsc_card, NULL, &reader_len, &state, &protocol, atr, &atr_len);
+	}
+
+	if (status_ret != SCARD_S_SUCCESS) {
+		cackey_mark_slot_reset(slot);
+
+		if (status_ret == SCARD_W_RESET_CARD) {
+			CACKEY_DEBUG_PRINTF("Reset required, please hold...");
+
+			scard_reconn_ret = cackey_reconnect_card(slot, SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1);
+			if (scard_reconn_ret == SCARD_S_SUCCESS) {
+				/* Re-establish transaction, if it was present */
+				if (slot->transaction_depth > 0) {
+					slot->transaction_depth--;
+					slot->transaction_need_hw_lock = 1;
+					cackey_begin_transaction(slot);
+				}
+
+				CACKEY_DEBUG_PRINTF("Reset successful, requerying");
+				status_ret = SCardStatus(slot->pcsc_card, NULL, &reader_len, &state, &protocol, atr, &atr_len);
+				if (status_ret != SCARD_S_SUCCESS) {
+					CACKEY_DEBUG_PRINTF("Still unable to query card status, returning token absent.  SCardStatus() = %s", CACKEY_DEBUG_FUNC_SCARDERR_TO_STR(status_ret));
+
+					return(CACKEY_PCSC_E_TOKENABSENT);
+				}
+			} else {
+				CACKEY_DEBUG_PRINTF("Unable to reconnect to card, returning token absent.  SCardReconnect() = %s", CACKEY_DEBUG_FUNC_SCARDERR_TO_STR(scard_reconn_ret));
+
+				return(CACKEY_PCSC_E_TOKENABSENT);
+			}
+		} else {
+			CACKEY_DEBUG_PRINTF("Unable to query card status, returning token absent.  SCardStatus() = %s", CACKEY_DEBUG_FUNC_SCARDERR_TO_STR(status_ret));
+
+			return(CACKEY_PCSC_E_TOKENABSENT);
+		}
+	}
+
+	if ((state & SCARD_ABSENT) == SCARD_ABSENT) {
+		CACKEY_DEBUG_PRINTF("Card is absent, returning token absent");
+
+		return(CACKEY_PCSC_E_TOKENABSENT);
+	}
+
+	CACKEY_DEBUG_PRINTF("Returning token present.");
+
+	return(CACKEY_PCSC_S_TOKENPRESENT);
+}
+
+/*
+ * SYNPOSIS
+ *     ...
+ *
+ * ARGUMENTS
+ *     ...
+ *
+ * RETURN VALUE
+ *     ...
+ *
+ * NOTES
+ *     ...
+ *
+ */
 static cackey_ret cackey_set_pin(struct cackey_slot *slot, unsigned char *old_pin, unsigned long old_pin_len, unsigned char *pin, unsigned long pin_len) {
 	struct cackey_pcsc_identity *pcsc_identities;
 	unsigned char cac_pin[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -3240,14 +3342,15 @@ static cackey_ret cackey_set_pin(struct cackey_slot *slot, unsigned char *old_pi
  *     ...
  *
  */
-static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, unsigned long pin_len, int *tries_remaining_p) {
+static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, unsigned long pin_len, int *tries_remaining_p, int retries) {
 	struct cackey_pcsc_identity *pcsc_identities;
 	unsigned char cac_pin[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 	unsigned long num_certs;
 	uint16_t response_code;
 	int tries_remaining;
 	int send_ret;
-	int key_reference = 0x00;
+	int key_reference = 0x00, have_piv = 0;
+	cackey_ret connect_ret, token_ret;
 
 	/* Indicate that we do not know about how many tries are remaining */
 	if (tries_remaining_p) {
@@ -3275,13 +3378,17 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 			case CACKEY_ID_TYPE_PIV:
 				CACKEY_DEBUG_PRINTF("We have PIV card, so we will attempt to authenticate using the PIV Application key reference");
 
-				key_reference = 0x80;
+				have_piv = 1;
 				break;
 			default:
 				break;
 		}
 
 		cackey_free_certs(pcsc_identities, num_certs, 1);
+	}
+
+	if (have_piv == 1) {
+		key_reference = 0x80;
 	}
 
 	/* Issue PIN Verify */
@@ -3306,114 +3413,41 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 			return(CACKEY_PCSC_E_LOCKED);
 		}
 
+		if (response_code == 0x6d00) {
+			if (have_piv == 1 && retries > 0) {
+				CACKEY_DEBUG_PRINTF("Got ISO 7816 Response \"6D 00\" in response to a VERIFY request.");
+				CACKEY_DEBUG_PRINTF("We did not expect this because it is not mentioned in NIST SP 800-73-3 Part 2 Section 3.2.1");
+				CACKEY_DEBUG_PRINTF("We are going to try to reset the card and select the applet again.");
+
+				cackey_mark_slot_reset(slot);
+
+				connect_ret = cackey_connect_card(slot);
+				if (connect_ret != CACKEY_PCSC_S_OK) {
+					CACKEY_DEBUG_PRINTF("Unable to reconnect after resetting the card, returning in error.");
+
+					return(connect_ret);
+				}
+
+				CACKEY_DEBUG_PRINTF("Verifying we still have a token.");
+				token_ret = cackey_token_present(slot);
+				if (token_ret != CACKEY_PCSC_S_TOKENPRESENT) {
+					CACKEY_DEBUG_PRINTF("Token not present, returning in error.");
+
+					return(token_ret);
+				}
+
+
+				CACKEY_DEBUG_PRINTF("Trying to login again");
+				return(cackey_login(slot, pin, pin_len, tries_remaining_p, retries - 1));
+			}
+		}
+
 		return(CACKEY_PCSC_E_GENERIC);
 	}
 
 	CACKEY_DEBUG_PRINTF("PIN Verification succeeded");
 
 	return(CACKEY_PCSC_S_OK);
-}
-
-/*
- * SYNPOSIS
- *     ...
- *
- * ARGUMENTS
- *     ...
- *
- * RETURN VALUE
- *     ...
- *
- * NOTES
- *     ...
- *
- */
-static cackey_ret cackey_token_present(struct cackey_slot *slot) {
-	cackey_ret pcsc_connect_ret;
-	DWORD reader_len = 0, state = 0, protocol = 0, atr_len;
-	BYTE atr[MAX_ATR_SIZE];
-	LONG status_ret, scard_reconn_ret;
-
-	CACKEY_DEBUG_PRINTF("Called.");
-
-	if (slot->internal) {
-		CACKEY_DEBUG_PRINTF("Returning token present (internal token)");
-
-		return(CACKEY_PCSC_S_TOKENPRESENT);
-	}
-
-	pcsc_connect_ret = cackey_connect_card(slot);
-	if (pcsc_connect_ret != CACKEY_PCSC_S_OK) {
-		CACKEY_DEBUG_PRINTF("Unable to connect to card, returning token absent");
-
-		return(CACKEY_PCSC_E_TOKENABSENT);
-	}
-
-	CACKEY_DEBUG_PRINTF("Calling SCardStatus() to determine card status");
-
-	atr_len = sizeof(atr);
-	status_ret = SCardStatus(slot->pcsc_card, NULL, &reader_len, &state, &protocol, atr, &atr_len);
-
-	if (status_ret == SCARD_E_INVALID_HANDLE) {
-		CACKEY_DEBUG_PRINTF("SCardStatus() returned SCARD_E_INVALID_HANDLE, marking is not already connected and trying again");
-		cackey_mark_slot_reset(slot);
-
-		pcsc_connect_ret = cackey_connect_card(slot);
-		if (pcsc_connect_ret != CACKEY_PCSC_S_OK) {
-			CACKEY_DEBUG_PRINTF("Unable to connect to card, returning token absent");
-
-			return(CACKEY_PCSC_E_TOKENABSENT);
-		}
-
-		CACKEY_DEBUG_PRINTF("Calling SCardStatus() again");
-
-		atr_len = sizeof(atr);
-		status_ret = SCardStatus(slot->pcsc_card, NULL, &reader_len, &state, &protocol, atr, &atr_len);
-	}
-
-	if (status_ret != SCARD_S_SUCCESS) {
-		cackey_mark_slot_reset(slot);
-
-		if (status_ret == SCARD_W_RESET_CARD) {
-			CACKEY_DEBUG_PRINTF("Reset required, please hold...");
-
-			scard_reconn_ret = cackey_reconnect_card(slot, SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1);
-			if (scard_reconn_ret == SCARD_S_SUCCESS) {
-				/* Re-establish transaction, if it was present */
-				if (slot->transaction_depth > 0) {
-					slot->transaction_depth--;
-					slot->transaction_need_hw_lock = 1;
-					cackey_begin_transaction(slot);
-				}
-
-				CACKEY_DEBUG_PRINTF("Reset successful, requerying");
-				status_ret = SCardStatus(slot->pcsc_card, NULL, &reader_len, &state, &protocol, atr, &atr_len);
-				if (status_ret != SCARD_S_SUCCESS) {
-					CACKEY_DEBUG_PRINTF("Still unable to query card status, returning token absent.  SCardStatus() = %s", CACKEY_DEBUG_FUNC_SCARDERR_TO_STR(status_ret));
-
-					return(CACKEY_PCSC_E_TOKENABSENT);
-				}
-			} else {
-				CACKEY_DEBUG_PRINTF("Unable to reconnect to card, returning token absent.  SCardReconnect() = %s", CACKEY_DEBUG_FUNC_SCARDERR_TO_STR(scard_reconn_ret));
-
-				return(CACKEY_PCSC_E_TOKENABSENT);
-			}
-		} else {
-			CACKEY_DEBUG_PRINTF("Unable to query card status, returning token absent.  SCardStatus() = %s", CACKEY_DEBUG_FUNC_SCARDERR_TO_STR(status_ret));
-
-			return(CACKEY_PCSC_E_TOKENABSENT);
-		}
-	}
-
-	if ((state & SCARD_ABSENT) == SCARD_ABSENT) {
-		CACKEY_DEBUG_PRINTF("Card is absent, returning token absent");
-
-		return(CACKEY_PCSC_E_TOKENABSENT);
-	}
-
-	CACKEY_DEBUG_PRINTF("Returning token present.");
-
-	return(CACKEY_PCSC_S_TOKENPRESENT);
 }
 
 /*
@@ -5665,7 +5699,7 @@ CK_DEFINE_FUNCTION(CK_RV, _C_LoginMutexArg)(CK_SESSION_HANDLE hSession, CK_USER_
 		ulPinLen = strlen(pinbuf);
 	}
 
-	login_ret = cackey_login(&cackey_slots[slotID], pPin, ulPinLen, &tries_remaining);
+	login_ret = cackey_login(&cackey_slots[slotID], pPin, ulPinLen, &tries_remaining, 3);
 	if (login_ret != CACKEY_PCSC_S_OK) {
 		if (lock_mutex) {
 			cackey_mutex_unlock(cackey_biglock);
