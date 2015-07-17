@@ -3414,9 +3414,9 @@ static cackey_ret cackey_login(struct cackey_slot *slot, unsigned char *pin, uns
 		}
 
 		if (response_code == 0x6d00) {
-			if (have_piv == 1 && retries > 0) {
+			if (retries > 0) {
 				CACKEY_DEBUG_PRINTF("Got ISO 7816 Response \"6D 00\" in response to a VERIFY request.");
-				CACKEY_DEBUG_PRINTF("We did not expect this because it is not mentioned in NIST SP 800-73-3 Part 2 Section 3.2.1");
+				CACKEY_DEBUG_PRINTF("We did not expect this because it is not mentioned in NIST SP 800-73-3 Part 2 Section 3.2.1 or GSC-IS v2.1");
 				CACKEY_DEBUG_PRINTF("We are going to try to reset the card and select the applet again.");
 
 				cackey_mark_slot_reset(slot);
