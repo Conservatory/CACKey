@@ -186,6 +186,26 @@ if ! test "${pincommandxonly}" = 'no'; then
 	AC_DEFINE_UNQUOTED(CACKEY_PIN_COMMAND_XONLY_DEFAULT, [$pincommandxonly], [Command to run to prompt user for PIN only if DISPLAY environment variable is set])
 fi
 
+AC_ARG_WITH(readers-include-only, AC_HELP_STRING([--with-readers-include-only=<string>], [Specify a string to match in a reader to include it, all other readers will be excluded.  The user may override this with the CACKEY_READERS_INCLUDE_ONLY environment variable.]), [
+	readers_include_only="${withval}"
+], [
+	readers_include_only="no"
+])
+
+AC_ARG_WITH(readers-exclude, AC_HELP_STRING([--with-readers-exclude=<string>], [Specify a string to match in a reader to exclude it, all other readers will be included.  The user may override this with the CACKEY_READERS_EXCLUDE environment variable.]), [
+	readers_exclude="${withval}"
+], [
+	readers_exclude="no"
+])
+
+if ! test "${readers_include_only}" = 'no'; then
+	AC_DEFINE_UNQUOTED(CACKEY_READERS_INCLUDE_ONLY_DEFAULT, [$readers_include_only], [Substring to match to include readers])
+fi
+
+if ! test "${readers_exclude}" = 'no'; then
+	AC_DEFINE_UNQUOTED(CACKEY_READERS_EXCLUDE_DEFAULT, [$readers_exclude], [Substring to match to exclude readers])
+fi
+
 dnl Set version script, to limit the scope of symbols
 DC_SETVERSIONSCRIPT(libcackey.vers, libcackey.syms)
 
