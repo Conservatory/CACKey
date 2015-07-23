@@ -882,10 +882,15 @@ struct cackey_pcsc_identity extra_certs[] = {
 #include "cackey_builtin_certs.h"
 };
 
+#define CACKEY_MACRO_DEFAULT_XSTR(str) CACKEY_MACRO_DEFAULT_STR(str)
+#define CACKEY_MACRO_DEFAULT_STR(str) #str
+
 /* Protected Authentication Path command */
-#define CACKEY_PIN_COMMAND_DEFAULT_XSTR(str) CACKEY_PIN_COMMAND_DEFAULT_STR(str)
-#define CACKEY_PIN_COMMAND_DEFAULT_STR(str) #str
 static char *cackey_pin_command = NULL;
+
+/* Reader Exclusion or Include-only */
+static char *cackey_readers_include_only = NULL;
+static char *cackey_readers_exclude = NULL;
 
 /* PCSC Global Handles */
 static LPSCARDCONTEXT cackey_pcsc_handle = NULL;
@@ -3333,6 +3338,9 @@ static cackey_ret cackey_set_pin(struct cackey_slot *slot, unsigned char *old_pi
 	CACKEY_DEBUG_PRINTF("PIN Change succeeded");
 
 	return(CACKEY_PCSC_S_OK);
+
+	/* Disable a warning, since this is only used in debug mode */
+	tries_remaining = tries_remaining;
 }
 
 /*
@@ -4459,21 +4467,49 @@ CK_DEFINE_FUNCTION(CK_RV, C_Initialize)(CK_VOID_PTR pInitArgs) {
 
 	/* Define a command to prompt user for a PIN */
 #ifdef CACKEY_PIN_COMMAND_DEFAULT
-	cackey_pin_command = CACKEY_PIN_COMMAND_DEFAULT_XSTR(CACKEY_PIN_COMMAND_DEFAULT);
+	cackey_pin_command = strdup(CACKEY_MACRO_DEFAULT_XSTR(CACKEY_PIN_COMMAND_DEFAULT));
 #endif
 
 #ifdef CACKEY_PIN_COMMAND_XONLY_DEFAULT
 	if (getenv("DISPLAY") != NULL) {
-		cackey_pin_command = CACKEY_PIN_COMMAND_DEFAULT_XSTR(CACKEY_PIN_COMMAND_XONLY_DEFAULT);
+		cackey_pin_command = strdup(CACKEY_MACRO_DEFAULT_XSTR(CACKEY_PIN_COMMAND_XONLY_DEFAULT));
 	}
 #endif
 
 	if (getenv("CACKEY_PIN_COMMAND") != NULL) {
-		cackey_pin_command = getenv("CACKEY_PIN_COMMAND");
+		cackey_pin_command = strdup(getenv("CACKEY_PIN_COMMAND"));
 	}
 
 	if (getenv("CACKEY_PIN_COMMAND_XONLY") != NULL && getenv("DISPLAY") != NULL) {
-		cackey_pin_command = getenv("CACKEY_PIN_COMMAND_XONLY");
+		cackey_pin_command = strdup(getenv("CACKEY_PIN_COMMAND_XONLY"));
+	}
+
+#ifdef CACKEY_READERS_INCLUDE_ONLY_DEFAULT
+	cackey_readers_include_only = strdup(CACKEY_MACRO_DEFAULT_XSTR(CACKEY_READERS_INCLUDE_ONLY_DEFAULT));
+#endif
+
+#ifdef CACKEY_READERS_EXCLUDE_DEFAULT
+	cackey_readers_exclude = strdup(CACKEY_MACRO_DEFAULT_XSTR(CACKEY_READERS_EXCLUDE_DEFAULT));
+#endif
+
+	if (getenv("CACKEY_READERS_INCLUDE_ONLY") != NULL) {
+		cackey_readers_include_only = strdup(getenv("CACKEY_READERS_INCLUDE_ONLY"));
+
+		if (cackey_readers_include_only[0] == '\0') {
+			free(cackey_readers_include_only);
+
+			cackey_readers_include_only = NULL;
+		}
+	}
+
+	if (getenv("CACKEY_READERS_EXCLUDE") != NULL) {
+		cackey_readers_exclude = strdup(getenv("CACKEY_READERS_EXCLUDE"));
+
+		if (cackey_readers_exclude[0] == '\0') {
+			free(cackey_readers_exclude);
+
+			cackey_readers_exclude = NULL;
+		}
 	}
 
 	CACKEY_DEBUG_PRINTF("Returning CKR_OK (%i)", CKR_OK);
@@ -4523,6 +4559,24 @@ CK_DEFINE_FUNCTION(CK_RV, C_Finalize)(CK_VOID_PTR pReserved) {
 	}
 
 	cackey_pcsc_disconnect();
+
+	if (cackey_pin_command != NULL) {
+		free(cackey_pin_command);
+
+		cackey_pin_command = NULL;
+	}
+
+	if (cackey_readers_include_only != NULL) {
+		free(cackey_readers_include_only);
+
+		cackey_readers_include_only = NULL;
+	}
+
+	if (cackey_readers_exclude != NULL) {
+		free(cackey_readers_exclude);
+
+		cackey_readers_exclude = NULL;
+	}
 
 	cackey_initialized = 0;
 
@@ -4577,10 +4631,12 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 	int pcsc_connect_ret;
 	CK_ULONG count, slot_count = 0, currslot, slot_idx;
 	char *pcsc_readers, *pcsc_readers_s, *pcsc_readers_e;
+	char *reader_check_pattern;
 	DWORD pcsc_readers_len;
 	LONG scard_listreaders_ret;
 	size_t curr_reader_len;
 	int slot_reset;
+	int include_reader;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -4718,6 +4774,37 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR p
 					}
 
 					CACKEY_DEBUG_PRINTF("Found reader: %s (currslot = %lu)", pcsc_readers, (unsigned long) currslot);
+
+					if (cackey_readers_include_only != NULL) {
+						CACKEY_DEBUG_PRINTF("Asked to include only readers matching: %s", cackey_readers_include_only);
+
+						include_reader = 0;
+						reader_check_pattern = cackey_readers_include_only;
+					} else if (cackey_readers_exclude != NULL) {
+						CACKEY_DEBUG_PRINTF("Asked to exclude readers matching: %s", cackey_readers_exclude);
+
+						include_reader = 1;
+						reader_check_pattern = cackey_readers_exclude;
+					} else {
+						include_reader = 1;
+						reader_check_pattern = NULL;
+					}
+
+					if (reader_check_pattern != NULL) {
+						if (strstr(pcsc_readers, reader_check_pattern) != NULL) {
+							CACKEY_DEBUG_PRINTF("This reader matched the pattern.");
+						
+							include_reader = !include_reader;
+						}
+					}
+
+					if (include_reader != 1) {
+						CACKEY_DEBUG_PRINTF("Skipping this reader.");
+
+						pcsc_readers += curr_reader_len + 1;
+
+						continue;
+					}
 
 					/* Only update the list of slots if we are actually being asked supply the slot information */
 					if (pSlotList) {
