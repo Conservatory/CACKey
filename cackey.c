@@ -1441,6 +1441,9 @@ static cackey_ret cackey_end_transaction(struct cackey_slot *slot) {
  *     CACKEY_PCSC_E_GENERIC      On error
  *     CACKEY_PCSC_E_TOKENABSENT  If the sending failed because the token is
  *                                absent
+ *     CACKEY_PCSC_E_RETRY        If something that looks retry'able went
+ *                                wrong -- try the whole transaction over
+ *                                again
  *
  * NOTES
  *     This function will connect to the PC/SC Connection Manager via
@@ -2988,7 +2991,11 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 				return(CACKEY_PCSC_E_TOKENABSENT);
 			}
 
-			return(-1);
+			CACKEY_DEBUG_PRINTF("Something went wrong during signing, resetting the slot and hoping for the best.");
+
+			cackey_mark_slot_reset(slot);
+
+			return(CACKEY_PCSC_E_GENERIC);
 		}
 
 		tmpbuf += bytes_to_send;
