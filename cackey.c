@@ -2834,7 +2834,7 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 	if (padInput) {
 		if (identity->pcsc_identity->keysize > 0) {
 			if (buflen != identity->pcsc_identity->keysize) {
-				if (buflen > (identity->pcsc_identity->keysize + 3)) {
+				if (buflen > (identity->pcsc_identity->keysize - 3)) {
 					CACKEY_DEBUG_PRINTF("Error.  Message is too large to sign/decrypt");
 
 					return(-1);
@@ -2845,6 +2845,8 @@ static ssize_t cackey_signdecrypt(struct cackey_slot *slot, struct cackey_identi
 				free_tmpbuf = 1;
 
 				padlen = tmpbuflen - buflen - 3;
+
+				CACKEY_DEBUG_PRINTF("Need to pad the buffer with %llu bytes (tmpbuflen = %llu, buflen = %llu)", (unsigned long long) padlen, (unsigned long long) tmpbuflen, (unsigned long long) buflen);
 
 				/* RSA PKCS#1 EMSA-PKCS1-v1_5 Padding */
 				tmpbuf[0] = 0x00;
@@ -7189,6 +7191,8 @@ CK_DEFINE_FUNCTION(CK_RV, C_Sign)(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pData,
 
 CK_DEFINE_FUNCTION(CK_RV, C_SignUpdate)(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pPart, CK_ULONG ulPartLen) {
 	int mutex_retval;
+	int resizeRetry;
+	int needResize;
 
 	CACKEY_DEBUG_PRINTF("Called.");
 
@@ -7249,10 +7253,38 @@ CK_DEFINE_FUNCTION(CK_RV, C_SignUpdate)(CK_SESSION_HANDLE hSession, CK_BYTE_PTR 
 	switch (cackey_sessions[hSession].sign_mechanism) {
 		case CKM_RSA_PKCS:
 			/* Accumulate directly */
-			if ((cackey_sessions[hSession].sign_bufused + ulPartLen) > cackey_sessions[hSession].sign_buflen) {
+			for (resizeRetry = 0; resizeRetry < 11; resizeRetry++) {
+				needResize = 0;
+				if ((cackey_sessions[hSession].sign_bufused + ulPartLen) > cackey_sessions[hSession].sign_buflen) {
+					needResize = 1;
+				}
+
+				if (!needResize) {
+					break;
+				}
+
+				CACKEY_DEBUG_PRINTF("Resizing signing buffer (try #%i of 10 -- 11th is fatal)", resizeRetry);
+
+				if (resizeRetry == 10) {
+					free(cackey_sessions[hSession].sign_buf);
+
+					cackey_sessions[hSession].sign_buflen = 0;
+					cackey_sessions[hSession].sign_buf = NULL;
+
+					break;
+				}
+
 				cackey_sessions[hSession].sign_buflen *= 2;
 
 				cackey_sessions[hSession].sign_buf = realloc(cackey_sessions[hSession].sign_buf, sizeof(*cackey_sessions[hSession].sign_buf) * cackey_sessions[hSession].sign_buflen);
+			}
+
+			if (cackey_sessions[hSession].sign_buf == NULL) {
+				cackey_mutex_unlock(cackey_biglock);
+
+				CACKEY_DEBUG_PRINTF("Error.  Signing buffer is NULL.");
+
+				return(CKR_GENERAL_ERROR);
 			}
 
 			memcpy(cackey_sessions[hSession].sign_buf + cackey_sessions[hSession].sign_bufused, pPart, ulPartLen);
