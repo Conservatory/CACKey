@@ -2747,6 +2747,8 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 		if (*count != 0) {
 			certs = realloc(certs, sizeof(*certs) * (*count));
 		} else {
+			free(certs);
+
 			certs = NULL;
 		}
 	}

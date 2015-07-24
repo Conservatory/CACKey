@@ -1,11 +1,11 @@
-#include "mypkcs11.h"
-
 #include <sys/types.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 
+#ifndef CACKEY_TEST_AFL
+#include "mypkcs11.h"
 
 static char *pkcs11_attribute_to_name(CK_ATTRIBUTE_TYPE attrib) {
 	static char retbuf[1024];
@@ -620,7 +620,7 @@ int main_pkcs11(void) {
 	return(0);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
 	int retval = 0, ck_retval;
 
 	printf("Testing libcackey...\n");
@@ -634,4 +634,474 @@ int main(void) {
 	printf("Testing libcackey... DONE. Status = %i\n", ck_retval);
 
 	return(retval);
+
+	/* UNREACHED: This is just to supress a warning about arguments to main we do not use. */
+	argc = argc;
+	argv = argv;
 }
+#else /* CACKEY_TEST_AFL */
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
+
+/* Include the CACKey source */
+#include "cackey.c"
+
+/* Fake a smartcard */
+static int scard_inTransaction = 0;
+static LONG scard_protocol;
+
+PCSC_API LONG SCardEstablishContext(DWORD dwScope, LPCVOID pvReserved1, LPCVOID pvReserved2, LPSCARDCONTEXT phContext) {
+	CACKEY_DEBUG_PRINTF("Called");
+
+	*phContext = 42;
+
+	return(SCARD_S_SUCCESS);
+}
+
+PCSC_API LONG SCardIsValidContext(SCARDCONTEXT hContext) {
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hContext != 42) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	return(SCARD_S_SUCCESS);
+}
+
+PCSC_API LONG SCardListReaders(SCARDCONTEXT hContext, LPCSTR mszGroups, LPSTR mszReaders, LPDWORD pcchReaders) {
+	static char *readers = "READER0";
+
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hContext != 42) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	*pcchReaders = strlen(readers) + 1;
+
+	if (mszReaders == NULL) {
+		return(SCARD_S_SUCCESS);
+	}
+
+	memcpy(mszReaders, readers, *pcchReaders);
+
+	return(SCARD_S_SUCCESS);
+}
+
+PCSC_API LONG SCardBeginTransaction(SCARDHANDLE hCard) {
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hCard != 99) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	if (scard_inTransaction) {
+		return(SCARD_E_SHARING_VIOLATION);
+	}
+
+	scard_inTransaction = 1;
+
+	return(SCARD_S_SUCCESS);
+}
+PCSC_API LONG SCardEndTransaction(SCARDHANDLE hCard, DWORD dwDisposition) {
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hCard != 99) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	scard_inTransaction = 0;
+
+	return(SCARD_S_SUCCESS);
+}
+
+PCSC_API LONG SCardStatus(SCARDHANDLE hCard, LPSTR mszReaderName, LPDWORD pcchReaderLen, LPDWORD pdwState, LPDWORD pdwProtocol, LPBYTE pbAtr, LPDWORD pcbAtrLen) {
+	LONG scardlistreaders_ret;
+
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hCard != 99) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	*pdwState = 0;
+	scardlistreaders_ret = SCardListReaders(42, NULL, mszReaderName, pcchReaderLen);
+	if (scardlistreaders_ret != SCARD_S_SUCCESS) {
+		return(scardlistreaders_ret);
+	}
+
+	*pdwProtocol = scard_protocol;
+
+	return(SCARD_S_SUCCESS);
+}
+
+PCSC_API LONG SCardConnect(SCARDCONTEXT hContext, LPCSTR szReader, DWORD dwShareMode, DWORD dwPreferredProtocols, LPSCARDHANDLE phCard, LPDWORD pdwActiveProtocol) {
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hContext != 42) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	if ((dwPreferredProtocols & SCARD_PROTOCOL_T0) == SCARD_PROTOCOL_T0) {
+		*pdwActiveProtocol = SCARD_PROTOCOL_T0;
+	} else {
+		*pdwActiveProtocol = SCARD_PROTOCOL_T1;
+	}
+
+	scard_protocol = *pdwActiveProtocol;
+
+	*phCard = 99;
+
+	return(SCARD_S_SUCCESS);
+}
+
+PCSC_API LONG SCardDisconnect(SCARDHANDLE hCard, DWORD dwDisposition) {
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hCard != 99) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	return(SCARD_S_SUCCESS);
+}
+
+PCSC_API LONG SCardReconnect(SCARDHANDLE hCard, DWORD dwShareMode, DWORD dwPreferredProtocols, DWORD dwInitialization, LPDWORD pdwActiveProtocol) {
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hCard != 99) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	return(SCardConnect(42, NULL, dwShareMode, dwPreferredProtocols, NULL, pdwActiveProtocol));
+}
+
+PCSC_API LONG SCardReleaseContext(SCARDCONTEXT hContext) {
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hContext != 42) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	return(SCARD_S_SUCCESS);
+}
+
+PCSC_API LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci, LPCBYTE pbSendBuffer, DWORD cbSendLength, SCARD_IO_REQUEST *pioRecvPci, LPBYTE pbRecvBuffer, LPDWORD pcbRecvLength) {
+	CACKEY_DEBUG_PRINTF("Called");
+
+	if (hCard != 99) {
+		return(SCARD_E_INVALID_HANDLE);
+	}
+
+	pbRecvBuffer[0] = 0x90;
+	pbRecvBuffer[1] = 0x00;
+
+	*pcbRecvLength = 2;
+
+	return(SCARD_S_SUCCESS);
+}
+
+/* American Fuzzy Lop testing program */
+int main(int argc, char **argv) {
+	CK_FUNCTION_LIST_PTR pFunctionList;
+	CK_RV (*C_CloseSession)(CK_SESSION_HANDLE hSession) = NULL;
+	CK_RV (*C_Finalize)(CK_VOID_PTR pReserved) = NULL;
+	CK_RV (*C_FindObjects)(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE_PTR phObject, CK_ULONG ulMaxObjectCount, CK_ULONG_PTR pulObjectCount) = NULL;
+	CK_RV (*C_FindObjectsFinal)(CK_SESSION_HANDLE hSession) = NULL;
+	CK_RV (*C_FindObjectsInit)(CK_SESSION_HANDLE hSession, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount) = NULL;
+	CK_RV (*C_GetAttributeValue)(CK_SESSION_HANDLE hSession, CK_OBJECT_HANDLE hObject, CK_ATTRIBUTE_PTR pTemplate, CK_ULONG ulCount) = NULL;
+	CK_RV (*C_GetSlotList)(CK_BBOOL tokenPresent, CK_SLOT_ID_PTR pSlotList, CK_ULONG_PTR pulCount) = NULL;
+	CK_RV (*C_GetTokenInfo)(CK_SLOT_ID slotID, CK_TOKEN_INFO_PTR pInfo) = NULL;
+	CK_RV (*C_Initialize)(CK_VOID_PTR pInitArgs) = NULL;
+	CK_RV (*C_Login)(CK_SESSION_HANDLE hSession, CK_USER_TYPE userType, CK_UTF8CHAR_PTR pPin, CK_ULONG ulPinLen) = NULL;
+	CK_RV (*C_OpenSession)(CK_SLOT_ID slotID, CK_FLAGS flags, CK_VOID_PTR pApplication, CK_NOTIFY notify, CK_SESSION_HANDLE_PTR phSession) = NULL;
+	CK_RV (*C_Sign)(CK_SESSION_HANDLE hSession, CK_BYTE_PTR pData, CK_ULONG ulDataLen, CK_BYTE_PTR pSignature, CK_ULONG_PTR pulSignatureLen) = NULL;
+	CK_RV (*C_SignInit)(CK_SESSION_HANDLE hSession, CK_MECHANISM_PTR pMechanism, CK_OBJECT_HANDLE hKey) = NULL;
+	CK_C_INITIALIZE_ARGS initargs;
+	CK_ULONG numSlots;
+	CK_SLOT_ID_PTR slots = NULL;
+	CK_TOKEN_INFO tokenInfo;
+	CK_SESSION_HANDLE hSession;
+	CK_OBJECT_HANDLE hObject, *privateKeyObjects_root = NULL, *privateKeyObjects, *currPrivKey;
+	CK_ULONG ulObjectCount;
+	CK_ATTRIBUTE template[] = {
+	                           {CKA_CLASS, NULL, 0},
+	                           {CKA_TOKEN, NULL, 0},
+	                           {CKA_LABEL, NULL, 0},
+	                           {CKA_PRIVATE, NULL, 0},
+	                           {CKA_ID, NULL, 0},
+	                           {CKA_SERIAL_NUMBER, NULL, 0},
+	                           {CKA_SUBJECT, NULL, 0},
+	                           {CKA_ISSUER, NULL, 0},
+	                           {CKA_CERTIFICATE_TYPE, NULL, 0},
+	                           {CKA_KEY_TYPE, NULL, 0},
+	                           {CKA_SIGN, NULL, 0},
+	                           {CKA_VALUE, NULL, 0},
+				   {CKA_CERT_MD5_HASH, NULL, 0},
+				   {CKA_CERT_SHA1_HASH, NULL, 0},
+				   {CKA_TRUSTED, NULL, 0},
+				   {CKA_TRUST_CLIENT_AUTH, NULL, 0},
+				   {CKA_TRUST_CODE_SIGNING, NULL, 0},
+				   {CKA_TRUST_CRL_SIGN, NULL, 0},
+				   {CKA_TRUST_DATA_ENCIPHERMENT, NULL, 0},
+				   {CKA_TRUST_DIGITAL_SIGNATURE, NULL, 0},
+				   {CKA_TRUST_EMAIL_PROTECTION, NULL, 0},
+				   {CKA_TRUST_KEY_AGREEMENT, NULL, 0},
+				   {CKA_TRUST_KEY_CERT_SIGN, NULL, 0},
+				   {CKA_TRUST_KEY_ENCIPHERMENT, NULL, 0},
+				   {CKA_TRUST_NON_REPUDIATION, NULL, 0},
+				   {CKA_TRUST_SERVER_AUTH, NULL, 0}
+	                          }, *curr_attr;
+	CK_ULONG curr_attr_idx;
+	CK_ULONG byte_idx;
+	CK_OBJECT_CLASS objectClass;
+	CK_BYTE signature[1024];
+	CK_ULONG signature_len;
+	CK_MECHANISM mechanism = {CKM_RSA_PKCS, NULL, 0};
+	CK_RV chk_rv;
+	ssize_t read_ret;
+	char data[8192], *fileName = NULL;
+	unsigned long data_len;
+	int fd;
+	int i;
+	int initialized = 0;
+	int retval = 1;
+
+	fileName = argv[1];
+	if (fileName == NULL) {
+		goto cleanup;
+	}
+
+	fd = open(fileName, O_RDONLY);
+	if (fd < 0) {
+		goto cleanup;
+	}
+
+	read_ret = read(fd, data, sizeof(data));
+	if (read_ret < 0) {
+		goto cleanup;
+	}
+
+	data_len = read_ret;
+
+	close(fd);
+
+	chk_rv = C_GetFunctionList(&pFunctionList);
+	if (chk_rv != CKR_OK) {
+		printf("C_GetFunctionList() failed.");
+
+		goto cleanup;
+	}
+
+	C_CloseSession = pFunctionList->C_CloseSession;
+	C_Finalize = pFunctionList->C_Finalize;
+	C_FindObjects = pFunctionList->C_FindObjects;
+	C_FindObjectsFinal = pFunctionList->C_FindObjectsFinal;
+	C_FindObjectsInit = pFunctionList->C_FindObjectsInit;
+	C_GetAttributeValue = pFunctionList->C_GetAttributeValue;
+	C_GetSlotList = pFunctionList->C_GetSlotList;
+	C_GetTokenInfo = pFunctionList->C_GetTokenInfo;
+	C_Initialize = pFunctionList->C_Initialize;
+	C_Login = pFunctionList->C_Login;
+	C_OpenSession = pFunctionList->C_OpenSession;
+	C_Sign = pFunctionList->C_Sign;
+	C_SignInit = pFunctionList->C_SignInit;
+
+	privateKeyObjects = malloc(sizeof(*privateKeyObjects) * 1024);
+	privateKeyObjects_root = privateKeyObjects;
+	for (i = 0; i < 1024; i++) {
+		privateKeyObjects[i] = CK_INVALID_HANDLE;
+	}
+
+	initargs.CreateMutex = NULL;
+	initargs.DestroyMutex = NULL;
+	initargs.LockMutex = NULL;
+	initargs.UnlockMutex = NULL;
+	initargs.flags = CKF_OS_LOCKING_OK;
+	initargs.pReserved = NULL;
+
+	chk_rv = C_Initialize(&initargs);
+	if (chk_rv != CKR_OK) {
+		initargs.CreateMutex = NULL;
+		initargs.DestroyMutex = NULL;
+		initargs.LockMutex = NULL;
+		initargs.UnlockMutex = NULL;
+		initargs.flags = 0;
+		initargs.pReserved = NULL;
+
+		chk_rv = C_Initialize(&initargs);
+		if (chk_rv != CKR_OK) {
+			printf("C_Initialize() failed.");
+
+			goto cleanup;
+		}
+	}
+
+	initialized = 1;
+
+	chk_rv = C_GetSlotList(FALSE, NULL, &numSlots);
+	if (chk_rv != CKR_OK) {
+		goto cleanup;
+	}
+
+	if (numSlots == 0) {
+		goto cleanup;
+	}
+
+	slots = malloc(sizeof(*slots) * numSlots);
+
+	if (slots == NULL) {
+		goto cleanup;
+	}
+
+	chk_rv = C_GetSlotList(FALSE, slots, &numSlots);
+	if (chk_rv != CKR_OK) {
+		goto cleanup;
+	}
+
+	chk_rv = C_OpenSession(slots[0], CKF_SERIAL_SESSION, NULL, NULL, &hSession);
+	if (chk_rv != CKR_OK) {
+		goto cleanup;
+	}
+
+	chk_rv = C_GetTokenInfo(slots[0], &tokenInfo);
+	if (chk_rv != CKR_OK) {
+		goto cleanup;
+	}
+
+	if ((tokenInfo.flags & CKF_LOGIN_REQUIRED) == CKF_LOGIN_REQUIRED && (tokenInfo.flags & CKF_PROTECTED_AUTHENTICATION_PATH) == 0) {
+		printf("Unable to login to card.\n");
+
+		goto cleanup;
+	}
+
+	chk_rv = C_Login(hSession, CKU_USER, NULL, 0);
+	if (chk_rv != CKR_OK) {
+		printf("Login to device failed.\n");
+
+		goto cleanup;
+	}
+
+	chk_rv = C_FindObjectsInit(hSession, NULL, 0);
+	if (chk_rv != CKR_OK) {
+		goto cleanup;
+	}
+
+	while (1) {
+		chk_rv = C_FindObjects(hSession, &hObject, 1, &ulObjectCount);
+		if (chk_rv != CKR_OK) {
+			printf("FindObjects() failed.\n");
+			break;
+		}
+
+		if (ulObjectCount == 0) {
+			break;
+		}
+
+		if (ulObjectCount != 1) {
+			printf("FindObjects() returned a weird number of objects.  Asked for 1, got %lu.\n", ulObjectCount);
+			break;
+		}
+
+		for (curr_attr_idx = 0; curr_attr_idx < (sizeof(template) / sizeof(template[0])); curr_attr_idx++) {
+			curr_attr = &template[curr_attr_idx];
+			if (curr_attr->pValue) {
+				free(curr_attr->pValue);
+			}
+
+			curr_attr->pValue = NULL;
+		}
+
+		chk_rv = C_GetAttributeValue(hSession, hObject, &template[0], sizeof(template) / sizeof(template[0]));
+		if (chk_rv == CKR_ATTRIBUTE_TYPE_INVALID || chk_rv == CKR_ATTRIBUTE_SENSITIVE || chk_rv == CKR_BUFFER_TOO_SMALL) {
+			chk_rv = CKR_OK;
+		}
+
+		if (chk_rv != CKR_OK) {
+			continue;
+		}
+
+		for (curr_attr_idx = 0; curr_attr_idx < (sizeof(template) / sizeof(template[0])); curr_attr_idx++) {
+			curr_attr = &template[curr_attr_idx];
+
+			if (((CK_LONG) curr_attr->ulValueLen) != ((CK_LONG) -1)) {
+				curr_attr->pValue = malloc(curr_attr->ulValueLen);
+			}
+		}
+
+		chk_rv = C_GetAttributeValue(hSession, hObject, &template[0], sizeof(template) / sizeof(template[0]));
+		if (chk_rv == CKR_OK || chk_rv == CKR_ATTRIBUTE_SENSITIVE || chk_rv == CKR_ATTRIBUTE_TYPE_INVALID || chk_rv == CKR_BUFFER_TOO_SMALL) {
+			for (curr_attr_idx = 0; curr_attr_idx < (sizeof(template) / sizeof(template[0])); curr_attr_idx++) {
+				curr_attr = &template[curr_attr_idx];
+
+				if (curr_attr->pValue) {
+					switch (curr_attr->type) {
+						case CKA_CLASS:
+							objectClass = *((CK_OBJECT_CLASS *) curr_attr->pValue);
+
+							if (objectClass == CKO_PRIVATE_KEY) {
+								*privateKeyObjects = hObject;
+								privateKeyObjects++;
+							}
+					}
+				} else {
+					free(curr_attr->pValue);
+					curr_attr->pValue = NULL;
+				}
+			}
+		} else {
+			printf("GetAttributeValue(hObject=%lu)/1 failed (rv = %lu).\n", (unsigned long) hObject, (unsigned long) chk_rv);
+		}
+
+	}
+
+	chk_rv = C_FindObjectsFinal(hSession);
+	if (chk_rv != CKR_OK) {
+		printf("FindObjectsFinal() failed.\n");
+	}
+
+	for (currPrivKey = privateKeyObjects_root; *currPrivKey != CK_INVALID_HANDLE; currPrivKey++) {
+		chk_rv = C_SignInit(hSession, &mechanism, *currPrivKey);
+		if (chk_rv == CKR_OK) {
+			signature_len = sizeof(signature);
+
+			chk_rv = C_Sign(hSession, (CK_BYTE_PTR) data, data_len, (CK_BYTE_PTR) &signature, &signature_len);
+			if (chk_rv == CKR_OK) {
+				printf("[%04lu/%02lx] Signature: ", (unsigned long) *currPrivKey, (unsigned long) mechanism.mechanism);
+
+				for (byte_idx = 0; byte_idx < signature_len; byte_idx++) {
+					printf("%02x ", (unsigned int) signature[byte_idx]);
+				}
+
+				printf("\n");
+			} else {
+				printf("Sign() failed.\n");
+			}
+		} else {
+			printf("SignInit() failed.\n");
+		}
+	}
+
+	chk_rv = C_CloseSession(hSession);
+	if (chk_rv != CKR_OK) {
+		printf("CloseSession failed.\n");
+	}
+
+	retval = 0;
+
+cleanup:
+	if (initialized) {
+		C_Finalize(NULL);
+	}
+
+	if (slots) {
+		free(slots);
+	}
+
+	if (privateKeyObjects_root) {
+		free(privateKeyObjects_root);
+	}
+
+	return(retval);
+}
+#endif
