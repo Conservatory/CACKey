@@ -70,13 +70,18 @@ static int _asn1_x509_read_asn1_object(unsigned char *buf, size_t buflen, va_lis
 	outbuf->tag = *buf_p;
 	buf_p++;
 	buflen--;
-	if (buflen == 0) {
-		return(-1);
-	}
 
 	/* NULL Tag -- no size is required */
 	if (outbuf->tag == 0x00) {
+		outbuf->size = 0;
+		outbuf->asn1rep_len = 1;
+		outbuf->asn1rep = buf;
+
 		return(_asn1_x509_read_asn1_object(buf_p, buflen, args));
+	}
+
+	if (buflen == 0) {
+		return(-1);
 	}
 
 	small_object_size = *buf_p;
@@ -95,6 +100,7 @@ static int _asn1_x509_read_asn1_object(unsigned char *buf, size_t buflen, va_lis
 
 			buf_p++;
 			buflen--;
+
 			if (buflen == 0) {
 				break;
 			}
@@ -107,7 +113,10 @@ static int _asn1_x509_read_asn1_object(unsigned char *buf, size_t buflen, va_lis
 		return(-1);
 	}
 
-	outbuf->contents = buf_p;
+	if (buflen != 0) {
+		outbuf->contents = buf_p;
+	}
+
 	outbuf->asn1rep_len = outbuf->size + (buf_p - buf);
 	outbuf->asn1rep = buf;
 
