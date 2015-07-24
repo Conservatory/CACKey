@@ -217,7 +217,7 @@ static unsigned long CACKEY_DEBUG_GETTIME(void) {
 	fflush(cackey_debug_fd()); \
 }
 #  define CACKEY_DEBUG_PRINTBUF(f, x, y) { \
-	static char buf_user[4096] = {0}, *buf_user_p; \
+	static char buf_user[4096] = {0}, *buf_user_p, *buf_user_print; \
 	unsigned long buf_user_size; \
 	unsigned char *TMPBUF; \
 	unsigned long idx; \
@@ -226,7 +226,7 @@ static unsigned long CACKEY_DEBUG_GETTIME(void) {
 	buf_user[0] = 0; \
 	buf_user_p = buf_user; \
 	buf_user_size = sizeof(buf_user); \
-	for (idx = 1; idx < (y); idx++) { \
+	for (idx = 0; idx < (y); idx++) { \
 		if (buf_user_size <= 0) { \
 			break; \
 		}; \
@@ -238,7 +238,8 @@ static unsigned long CACKEY_DEBUG_GETTIME(void) {
 		buf_user_size -= snprintf_ret; \
 	}; \
 	buf_user[sizeof(buf_user) - 1] = '\0'; \
-	fprintf(cackey_debug_fd(), "[%lu]: %s():%i: %s  (%s/%lu = {%02x%s})\n", CACKEY_DEBUG_GETTIME(), __func__, __LINE__, f, #x, (unsigned long) (y), TMPBUF[0], buf_user); \
+	buf_user_print = buf_user + 2; \
+	fprintf(cackey_debug_fd(), "[%lu]: %s():%i: %s  (%s/%lu = {%s})\n", CACKEY_DEBUG_GETTIME(), __func__, __LINE__, f, #x, (unsigned long) (y), buf_user_print); \
 	fflush(cackey_debug_fd()); \
 }
 #  define free(x) { CACKEY_DEBUG_PRINTF("FREE(%p) (%s)", (void *) x, #x); free(x); }
@@ -844,7 +845,8 @@ typedef enum {
 	CACKEY_PCSC_E_LOCKED          = -3,
 	CACKEY_PCSC_E_NEEDLOGIN       = -4,
 	CACKEY_PCSC_E_TOKENABSENT     = -6,
-	CACKEY_PCSC_E_RETRY           = -7
+	CACKEY_PCSC_E_RETRY           = -7,
+	CACKEY_PCSC_E_NODATA          = -8
 } cackey_ret;
 
 struct cackey_tlv_cardurl {
@@ -1650,7 +1652,12 @@ static cackey_ret cackey_send_apdu(struct cackey_slot *slot, unsigned char class
 		/* End Smartcard Transaction */
 		cackey_end_transaction(slot);
 
-		return(CACKEY_PCSC_E_GENERIC);
+		/* Supply an invalid response code */
+		if (respcode) {
+			*respcode = 0;
+		}
+
+		return(CACKEY_PCSC_E_NODATA);
 	}
 
 	/* Determine result code */
@@ -2509,14 +2516,6 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 		return(NULL);
 	}
 
-	if (certs == NULL) {
-		certs = malloc(sizeof(*certs) * 5);
-		*count = 5;
-		certs_resizable = 1;
-	} else {
-		certs_resizable = 0;
-	}
-
 	/* Select the CCC Applet */
 	send_ret = cackey_select_applet(slot, ccc_aid, sizeof(ccc_aid));
 	if (send_ret != CACKEY_PCSC_S_OK) {
@@ -2532,8 +2531,20 @@ static struct cackey_pcsc_identity *cackey_read_certs(struct cackey_slot *slot, 
 			/* Terminate SmartCard Transaction */
 			cackey_end_transaction(slot);
 
+			if (certs == NULL) {
+				*count = 0;
+			}
+
 			return(NULL);
 		}
+	}
+
+	if (certs == NULL) {
+		certs = malloc(sizeof(*certs) * 5);
+		*count = 5;
+		certs_resizable = 1;
+	} else {
+		certs_resizable = 0;
 	}
 
 	if (piv) {
@@ -7727,6 +7738,7 @@ CK_DEFINE_FUNCTION(CK_RV, C_CancelFunction)(CK_SESSION_HANDLE hSession) {
 }
 
 CK_DEFINE_FUNCTION(CK_RV, C_GetFunctionList)(CK_FUNCTION_LIST_PTR_PTR ppFunctionList) {
+	static CK_FUNCTION_LIST_PTR spFunctionList = NULL;
 	CK_FUNCTION_LIST_PTR pFunctionList;
 
 	CACKEY_DEBUG_PRINTF("Called.");
@@ -7735,6 +7747,14 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetFunctionList)(CK_FUNCTION_LIST_PTR_PTR ppFunction
 		CACKEY_DEBUG_PRINTF("Error. ppFunctionList is NULL.");
 
 		return(CKR_ARGUMENTS_BAD);
+	}
+
+	if (spFunctionList != NULL) {
+		*ppFunctionList = spFunctionList;
+
+		CACKEY_DEBUG_PRINTF("Returning CKR_OK (%i)", CKR_OK);
+
+		return(CKR_OK);
 	}
 
 	pFunctionList = malloc(sizeof(*pFunctionList));
@@ -7811,10 +7831,10 @@ CK_DEFINE_FUNCTION(CK_RV, C_GetFunctionList)(CK_FUNCTION_LIST_PTR_PTR ppFunction
 	pFunctionList->C_CancelFunction = C_CancelFunction;
 	pFunctionList->C_GetFunctionList = C_GetFunctionList;
 
+	spFunctionList  = pFunctionList;
 	*ppFunctionList = pFunctionList;
 
 	CACKEY_DEBUG_PRINTF("Returning CKR_OK (%i)", CKR_OK);
 
 	return(CKR_OK);
 }
-
