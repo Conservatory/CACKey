@@ -224,6 +224,7 @@ static unsigned long CACKEY_DEBUG_GETTIME(void) {
 	int snprintf_ret; \
 	TMPBUF = (unsigned char *) (x); \
 	buf_user[0] = 0; \
+	buf_user[2] = 0; \
 	buf_user_p = buf_user; \
 	buf_user_size = sizeof(buf_user); \
 	for (idx = 0; idx < (y); idx++) { \

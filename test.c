@@ -644,12 +644,23 @@ int main(int argc, char **argv) {
 #include <sys/types.h>
 #include <fcntl.h>
 
+static unsigned char *inputData;
+static unsigned long inputDataLen;
+
 /* Include the CACKey source */
 #include "cackey.c"
 
+#undef CACKEY_DEBUG_PRINTF
+#define CACKEY_DEBUG_PRINTF(x...) /**/
+#undef malloc
+#undef realloc
+#undef strdup
+
 /* Fake a smartcard */
+const SCARD_IO_REQUEST g_rgSCardT0Pci, g_rgSCardT1Pci;
 static int scard_inTransaction = 0;
 static LONG scard_protocol;
+
 
 PCSC_API LONG SCardEstablishContext(DWORD dwScope, LPCVOID pvReserved1, LPCVOID pvReserved2, LPSCARDCONTEXT phContext) {
 	CACKEY_DEBUG_PRINTF("Called");
@@ -788,15 +799,37 @@ PCSC_API LONG SCardReleaseContext(SCARDCONTEXT hContext) {
 
 PCSC_API LONG SCardTransmit(SCARDHANDLE hCard, const SCARD_IO_REQUEST *pioSendPci, LPCBYTE pbSendBuffer, DWORD cbSendLength, SCARD_IO_REQUEST *pioRecvPci, LPBYTE pbRecvBuffer, LPDWORD pcbRecvLength) {
 	CACKEY_DEBUG_PRINTF("Called");
+	unsigned int bytesToRead;
 
 	if (hCard != 99) {
 		return(SCARD_E_INVALID_HANDLE);
 	}
 
-	pbRecvBuffer[0] = 0x90;
-	pbRecvBuffer[1] = 0x00;
+	if (inputDataLen <= 1) {
+		*pcbRecvLength = 0;
 
-	*pcbRecvLength = 2;
+		return(SCARD_S_SUCCESS);
+	}
+
+	bytesToRead = (inputData[0] << 8) | inputData[1];
+
+	inputData    += 2;
+	inputDataLen -= 2;
+
+	if (bytesToRead > inputDataLen) {
+		bytesToRead = inputDataLen;
+	}
+
+	if (bytesToRead > *pcbRecvLength) {
+		return(SCARD_E_INSUFFICIENT_BUFFER);
+	}
+
+	*pcbRecvLength = bytesToRead;
+
+	memcpy(pbRecvBuffer, inputData, bytesToRead);
+
+	inputData += bytesToRead;
+	inputDataLen -= bytesToRead;
 
 	return(SCARD_S_SUCCESS);
 }
@@ -860,8 +893,7 @@ int main(int argc, char **argv) {
 	CK_MECHANISM mechanism = {CKM_RSA_PKCS, NULL, 0};
 	CK_RV chk_rv;
 	ssize_t read_ret;
-	char data[8192], *fileName = NULL;
-	unsigned long data_len;
+	char *fileName = NULL;
 	int fd;
 	int i;
 	int initialized = 0;
@@ -877,12 +909,16 @@ int main(int argc, char **argv) {
 		goto cleanup;
 	}
 
-	read_ret = read(fd, data, sizeof(data));
+	inputDataLen = 16384;
+	inputData = malloc(inputDataLen);
+
+	read_ret = read(fd, inputData, inputDataLen);
 	if (read_ret < 0) {
 		goto cleanup;
 	}
 
-	data_len = read_ret;
+	inputDataLen = read_ret;
+	inputData = realloc(inputData, inputDataLen);
 
 	close(fd);
 
@@ -1065,7 +1101,7 @@ int main(int argc, char **argv) {
 		if (chk_rv == CKR_OK) {
 			signature_len = sizeof(signature);
 
-			chk_rv = C_Sign(hSession, (CK_BYTE_PTR) data, data_len, (CK_BYTE_PTR) &signature, &signature_len);
+			chk_rv = C_Sign(hSession, (CK_BYTE_PTR) "Test", 4, (CK_BYTE_PTR) &signature, &signature_len);
 			if (chk_rv == CKR_OK) {
 				printf("[%04lu/%02lx] Signature: ", (unsigned long) *currPrivKey, (unsigned long) mechanism.mechanism);
 
