@@ -5,7 +5,13 @@ CACKey provides a standard interface (PKCS#11) for smartcards connected
 to a PC/SC compliant reader.  It performs a similar function to
 "CoolKey", but only supports Government Smartcards.  It supports all
 Government Smartcards that implement the Government Smartcard
-Interoperability Specification (GSC-IS) v2.1 or newer.  
+Interoperability Specification (GSC-IS) v2.1 or newer. 
+
+The following site is the "upstream" version: http://cackey.rkeene.org/
+
+The conservatory version is only interesting in that it preserves some 
+information about licensing/copyrights that may not be documented in the 
+upstream.
 
 ### Release information:
 - pkg: CACKey version 20140418
