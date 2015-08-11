@@ -6,7 +6,11 @@
 		<post-install type="none"/>
 		<requireAuthorization/>
 		<installFrom relative="true" mod="true">PKCS11.tokend</installFrom>
+<<<<<<< HEAD
 		<installTo mod="true" relocatable="true">/System/Library/Security/tokend/PKCS11.tokend</installTo>
+=======
+		<installTo mod="true" relocatable="true">/Library/Security/tokend/PKCS11.tokend</installTo>
+>>>>>>> trunk
 		<flags></flags>
 		<packageStore type="internal"></packageStore>
 		<mod>parent</mod>
