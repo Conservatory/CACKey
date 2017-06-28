@@ -1,9 +1,6 @@
 /* zconf.h -- configuration of the zlib compression library
-<<<<<<< HEAD
- * Copyright (C) 1995-2005 Jean-loup Gailly.
-=======
  * Copyright (C) 1995-2013 Jean-loup Gailly.
->>>>>>> trunk
+
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 
@@ -15,54 +12,6 @@
 /*
  * If you *really* need a unique prefix for all types and library functions,
  * compile with -DZ_PREFIX. The "standard" zlib should be compiled without it.
-<<<<<<< HEAD
- */
-#ifdef Z_PREFIX
-#  define deflateInit_          z_deflateInit_
-#  define deflate               z_deflate
-#  define deflateEnd            z_deflateEnd
-#  define inflateInit_          z_inflateInit_
-#  define inflate               z_inflate
-#  define inflateEnd            z_inflateEnd
-#  define deflateInit2_         z_deflateInit2_
-#  define deflateSetDictionary  z_deflateSetDictionary
-#  define deflateCopy           z_deflateCopy
-#  define deflateReset          z_deflateReset
-#  define deflateParams         z_deflateParams
-#  define deflateBound          z_deflateBound
-#  define deflatePrime          z_deflatePrime
-#  define inflateInit2_         z_inflateInit2_
-#  define inflateSetDictionary  z_inflateSetDictionary
-#  define inflateSync           z_inflateSync
-#  define inflateSyncPoint      z_inflateSyncPoint
-#  define inflateCopy           z_inflateCopy
-#  define inflateReset          z_inflateReset
-#  define inflateBack           z_inflateBack
-#  define inflateBackEnd        z_inflateBackEnd
-#  define compress              z_compress
-#  define compress2             z_compress2
-#  define compressBound         z_compressBound
-#  define uncompress            z_uncompress
-#  define adler32               z_adler32
-#  define crc32                 z_crc32
-#  define get_crc_table         z_get_crc_table
-#  define zError                z_zError
-
-#  define alloc_func            z_alloc_func
-#  define free_func             z_free_func
-#  define in_func               z_in_func
-#  define out_func              z_out_func
-#  define Byte                  z_Byte
-#  define uInt                  z_uInt
-#  define uLong                 z_uLong
-#  define Bytef                 z_Bytef
-#  define charf                 z_charf
-#  define intf                  z_intf
-#  define uIntf                 z_uIntf
-#  define uLongf                z_uLongf
-#  define voidpf                z_voidpf
-#  define voidp                 z_voidp
-=======
  * Even better than compiling with -DZ_PREFIX would be to use configure to set
  * this permanently in zconf.h using "./configure --zprefix".
  */
@@ -202,7 +151,7 @@
 #  define gz_header_s           z_gz_header_s
 #  define internal_state        z_internal_state
 
->>>>>>> trunk
+
 #endif
 
 #if defined(__MSDOS__) && !defined(MSDOS)
@@ -271,15 +220,13 @@
 #  endif
 #endif
 
-<<<<<<< HEAD
-=======
 #if defined(ZLIB_CONST) && !defined(z_const)
 #  define z_const const
 #else
 #  define z_const
 #endif
 
->>>>>>> trunk
+
 /* Some Mac compilers merge all .h files incorrectly: */
 #if defined(__MWERKS__)||defined(applec)||defined(THINK_C)||defined(__SC__)
 #  define NO_DUMMY_DECL
@@ -326,8 +273,6 @@
 #  endif
 #endif
 
-<<<<<<< HEAD
-=======
 #ifndef Z_ARG /* function prototypes for stdarg */
 #  if defined(STDC) || defined(Z_HAVE_STDARG_H)
 #    define Z_ARG(args)  args
@@ -336,7 +281,7 @@
 #  endif
 #endif
 
->>>>>>> trunk
+
 /* The following definitions for FAR are needed only for MSDOS mixed
  * model programming (small or medium model with some far allocations).
  * This was tested only with MSC; for other MSDOS compilers you may have
@@ -450,17 +395,6 @@ typedef uLong FAR uLongf;
    typedef Byte       *voidp;
 #endif
 
-<<<<<<< HEAD
-#if 1           /* HAVE_UNISTD_H -- this line is updated by ./configure */
-#  include <sys/types.h> /* for off_t */
-#  include <unistd.h>    /* for SEEK_* and off_t */
-#  ifdef VMS
-#    include <unixio.h>   /* for off_t */
-#  endif
-#  define z_off_t off_t
-#endif
-#ifndef SEEK_SET
-=======
 #if !defined(Z_U4) && !defined(Z_SOLO) && defined(STDC)
 #  include <limits.h>
 #  if (UINT_MAX == 0xffffffffUL)
@@ -542,29 +476,17 @@ typedef uLong FAR uLongf;
 #endif
 
 #if !defined(SEEK_SET) && !defined(Z_SOLO)
->>>>>>> trunk
+
 #  define SEEK_SET        0       /* Seek from beginning of file.  */
 #  define SEEK_CUR        1       /* Seek from current position.  */
 #  define SEEK_END        2       /* Set file pointer to EOF plus "offset" */
 #endif
-<<<<<<< HEAD
-=======
 
->>>>>>> trunk
+
 #ifndef z_off_t
 #  define z_off_t long
 #endif
 
-<<<<<<< HEAD
-#if defined(__OS400__)
-#  define NO_vsnprintf
-#endif
-
-#if defined(__MVS__)
-#  define NO_vsnprintf
-#  ifdef FAR
-#    undef FAR
-=======
 #if !defined(_WIN32) && defined(Z_LARGE64)
 #  define z_off64_t off64_t
 #else
@@ -572,27 +494,12 @@ typedef uLong FAR uLongf;
 #    define z_off64_t __int64
 #  else
 #    define z_off64_t z_off_t
->>>>>>> trunk
+
 #  endif
 #endif
 
 /* MVS linker does not support external names larger than 8 bytes */
 #if defined(__MVS__)
-<<<<<<< HEAD
-#   pragma map(deflateInit_,"DEIN")
-#   pragma map(deflateInit2_,"DEIN2")
-#   pragma map(deflateEnd,"DEEND")
-#   pragma map(deflateBound,"DEBND")
-#   pragma map(inflateInit_,"ININ")
-#   pragma map(inflateInit2_,"ININ2")
-#   pragma map(inflateEnd,"INEND")
-#   pragma map(inflateSync,"INSY")
-#   pragma map(inflateSetDictionary,"INSEDI")
-#   pragma map(compressBound,"CMBND")
-#   pragma map(inflate_table,"INTABL")
-#   pragma map(inflate_fast,"INFA")
-#   pragma map(inflate_copyright,"INCOPY")
-=======
   #pragma map(deflateInit_,"DEIN")
   #pragma map(deflateInit2_,"DEIN2")
   #pragma map(deflateEnd,"DEEND")
@@ -606,7 +513,7 @@ typedef uLong FAR uLongf;
   #pragma map(inflate_table,"INTABL")
   #pragma map(inflate_fast,"INFA")
   #pragma map(inflate_copyright,"INCOPY")
->>>>>>> trunk
+
 #endif
 
 #endif /* ZCONF_H */

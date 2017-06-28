@@ -1,16 +1,10 @@
-<<<<<<< HEAD
-#include "mypkcs11.h"
 
-=======
->>>>>>> trunk
 #include <sys/types.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-<<<<<<< HEAD
-=======
 #ifdef CACKEY_TEST_AFL
 #include <sys/types.h>
 #include <fcntl.h>
@@ -242,7 +236,7 @@ static void loadTestData(const char *filename) {
 	return;
 }
 #endif
->>>>>>> trunk
+
 
 static char *pkcs11_attribute_to_name(CK_ATTRIBUTE_TYPE attrib) {
 	static char retbuf[1024];
@@ -475,10 +469,8 @@ int main_pkcs11(void) {
 			return(1);
 		}
 
-<<<<<<< HEAD
-=======
 		printf("    Id     : %lu\n", (unsigned long) slots[currSlot]);
->>>>>>> trunk
+
 		printf("    Desc   : %.*s\n", 32, slotInfo.slotDescription);
 		printf("    ManufID: %.*s\n", 32, slotInfo.manufacturerID);
 		printf("    HWVers : %i.%i\n", slotInfo.hardwareVersion.major, slotInfo.hardwareVersion.minor);
@@ -570,32 +562,26 @@ int main_pkcs11(void) {
 
 	chk_rv = C_OpenSession(slots[0], CKF_SERIAL_SESSION, NULL, NULL, &hSession);
 	if (chk_rv == CKR_OK) {
-<<<<<<< HEAD
-		if ((tokenInfo.flags & CKF_LOGIN_REQUIRED) == CKF_LOGIN_REQUIRED) {
-=======
 		chk_rv = C_GetTokenInfo(slots[0], &tokenInfo);
 		if (chk_rv != CKR_OK) {
 			return(1);
 		}
 
 		if ((tokenInfo.flags & CKF_LOGIN_REQUIRED) == CKF_LOGIN_REQUIRED && (tokenInfo.flags & CKF_PROTECTED_AUTHENTICATION_PATH) == 0) {
->>>>>>> trunk
+
 			fgets_ret = NULL;
 
 			while (fgets_ret == NULL) {
 				printf("** ENTER PIN: ");
 				fflush(stdout);
 
-<<<<<<< HEAD
-				fgets_ret = fgets((char *) user_pin, sizeof(user_pin), stdin);
-=======
 #ifdef CACKEY_TEST_AFL
 				memcpy(user_pin, "0000000", 8);
 				fgets_ret = (char *) user_pin;
 #else
 				fgets_ret = fgets((char *) user_pin, sizeof(user_pin), stdin);
 #endif
->>>>>>> trunk
+
 			}
 
 			if (strlen((char *) user_pin) >= 1) {
@@ -873,22 +859,17 @@ int main_pkcs11(void) {
 	return(0);
 }
 
-<<<<<<< HEAD
-int main(void) {
-=======
 int main(int argc, char **argv) {
->>>>>>> trunk
+
 	int retval = 0, ck_retval;
 
 	printf("Testing libcackey...\n");
 
-<<<<<<< HEAD
-=======
 	if (argc > 1) {
 		loadTestData(argv[1]);
 	}
 
->>>>>>> trunk
+
 	ck_retval = main_pkcs11();
 
 	if (ck_retval != 0) {

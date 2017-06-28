@@ -34,15 +34,10 @@
 \f0\fs26 \cf0 Release information:\
     pkg: CACKey\
  author: US Army Corps of Engineers\
-<<<<<<< HEAD
-Mac build contact: Kenneth Van Alstyne <kenneth.vanalstyne@hq.dhs.gov>\
-                   US Department of Homeland Security\
-contact: Roy Keene <roy.s.keene@usace.army.mil>\
-=======
 Mac build contact: Kenneth Van Alstyne <kenny@coreadaptive.com>\
                    Core Adaptive, LLC\
 contact: Roy Keene <rkeene@coreadaptive.com>\
->>>>>>> trunk
+
 ------------------------------------------------\
 \
 The PKCS11.tokend connector module included in this package is licensed under\
@@ -55,13 +50,9 @@ Public License (GPL):\
 \
 The files in the source directory and the "leakcheck" directory are the intellectual\
 property of the United States Government.  It is not clear which, if any,\
-<<<<<<< HEAD
-license is made on them.  In addition, as of 07-JUN-2010 they have not be\
-cleared for public release.\
-=======
 license is made on them.  In addition, as of 07-JUN-2010 they have not\
 been cleared for public release.\
->>>>>>> trunk
+
 \
 The files in the "pkcs11/" directory are licensed under the terms of the\
 following licenses:\
@@ -80,15 +71,10 @@ following licenses:\
 \f0\fs26 \cf0 Thank you for choosing to install CACKey.\
 \
 To use CACKey, install /Library/CACKey/libcackey.dylib or\
-<<<<<<< HEAD
-/usr/lib/pkcs11/cackey.dylib as a security module into any application that can use a PKCS#11 provider.\
-\
-A PKCS11 Connector for Tokend (Keychain Access) will be installed in /System/Library/Security/tokend.\
-=======
 /usr/local/lib/pkcs11/cackey.dylib as a security module into any application that can use a PKCS#11 provider.\
 \
 A PKCS11 Connector for Tokend (Keychain Access) will be installed in /Library/Security/tokend.\
->>>>>>> trunk
+
 To use, be sure to import the certificate authorities into Keychain Access.\
 \
 A debug version, /Library/CACKey/libcackey_g.dylib is provided if debug output is necessary.}]]>
@@ -96,12 +82,7 @@ A debug version, /Library/CACKey/libcackey_g.dylib is provided if debug output i
 		</locale>
 	</resources>
 	<requirements>
-<<<<<<< HEAD
-		<requirement id="tosv" operator="lt" value="'@@NEXTOSXVER@@'">
-			<message>This CACKey release requires Mac OS X @@CUROSXVER@@.</message>
-		</requirement>
-=======
->>>>>>> trunk
+
 		<requirement id="tosv" operator="ge" value="'@@CUROSXVER@@'">
 			<message>This CACKey release requires Mac OS X @@CUROSXVER@@.</message>
 		</requirement>

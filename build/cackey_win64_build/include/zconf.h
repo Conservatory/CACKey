@@ -1,9 +1,6 @@
 /* zconf.h -- configuration of the zlib compression library
-<<<<<<< HEAD
- * Copyright (C) 1995-2012 Jean-loup Gailly.
-=======
  * Copyright (C) 1995-2013 Jean-loup Gailly.
->>>>>>> trunk
+
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 
@@ -25,10 +22,8 @@
 #  define _dist_code            z__dist_code
 #  define _length_code          z__length_code
 #  define _tr_align             z__tr_align
-<<<<<<< HEAD
-=======
 #  define _tr_flush_bits        z__tr_flush_bits
->>>>>>> trunk
+
 #  define _tr_flush_block       z__tr_flush_block
 #  define _tr_init              z__tr_init
 #  define _tr_stored_block      z__tr_stored_block
@@ -85,10 +80,8 @@
 #      define gzopen_w              z_gzopen_w
 #    endif
 #    define gzprintf              z_gzprintf
-<<<<<<< HEAD
-=======
 #    define gzvprintf             z_gzvprintf
->>>>>>> trunk
+
 #    define gzputc                z_gzputc
 #    define gzputs                z_gzputs
 #    define gzread                z_gzread
@@ -115,10 +108,8 @@
 #  define inflateReset          z_inflateReset
 #  define inflateReset2         z_inflateReset2
 #  define inflateSetDictionary  z_inflateSetDictionary
-<<<<<<< HEAD
-=======
 #  define inflateGetDictionary  z_inflateGetDictionary
->>>>>>> trunk
+
 #  define inflateSync           z_inflateSync
 #  define inflateSyncPoint      z_inflateSyncPoint
 #  define inflateUndermine      z_inflateUndermine
@@ -404,30 +395,16 @@ typedef uLong FAR uLongf;
    typedef Byte       *voidp;
 #endif
 
-<<<<<<< HEAD
-/* ./configure may #define Z_U4 here */
 
-=======
->>>>>>> trunk
 #if !defined(Z_U4) && !defined(Z_SOLO) && defined(STDC)
 #  include <limits.h>
 #  if (UINT_MAX == 0xffffffffUL)
 #    define Z_U4 unsigned
-<<<<<<< HEAD
-#  else
-#    if (ULONG_MAX == 0xffffffffUL)
-#      define Z_U4 unsigned long
-#    else
-#      if (USHRT_MAX == 0xffffffffUL)
-#        define Z_U4 unsigned short
-#      endif
-#    endif
-=======
 #  elif (ULONG_MAX == 0xffffffffUL)
 #    define Z_U4 unsigned long
 #  elif (USHRT_MAX == 0xffffffffUL)
 #    define Z_U4 unsigned short
->>>>>>> trunk
+
 #  endif
 #endif
 
@@ -451,10 +428,6 @@ typedef uLong FAR uLongf;
 #  endif
 #endif
 
-<<<<<<< HEAD
-#ifdef _WIN32
-#  include <stddef.h>           /* for wchar_t */
-=======
 #if defined(STDC) || defined(Z_HAVE_STDARG_H)
 #  ifndef Z_SOLO
 #    include <stdarg.h>         /* for va_list */
@@ -465,7 +438,7 @@ typedef uLong FAR uLongf;
 #  ifndef Z_SOLO
 #    include <stddef.h>         /* for wchar_t */
 #  endif
->>>>>>> trunk
+
 #endif
 
 /* a little trick to accommodate both "#define _LARGEFILE64_SOURCE" and
@@ -474,11 +447,8 @@ typedef uLong FAR uLongf;
  * both "#undef _LARGEFILE64_SOURCE" and "#define _LARGEFILE64_SOURCE 0" as
  * equivalently requesting no 64-bit operations
  */
-<<<<<<< HEAD
-#if defined(LARGEFILE64_SOURCE) && -_LARGEFILE64_SOURCE - -1 == 1
-=======
 #if defined(_LARGEFILE64_SOURCE) && -_LARGEFILE64_SOURCE - -1 == 1
->>>>>>> trunk
+
 #  undef _LARGEFILE64_SOURCE
 #endif
 
@@ -486,11 +456,8 @@ typedef uLong FAR uLongf;
 #  define Z_HAVE_UNISTD_H
 #endif
 #ifndef Z_SOLO
-<<<<<<< HEAD
-#  if defined(Z_HAVE_UNISTD_H) || defined(LARGEFILE64_SOURCE)
-=======
 #  if defined(Z_HAVE_UNISTD_H) || defined(_LARGEFILE64_SOURCE)
->>>>>>> trunk
+
 #    include <unistd.h>         /* for SEEK_*, off_t, and _LFS64_LARGEFILE */
 #    ifdef VMS
 #      include <unixio.h>       /* for off_t */

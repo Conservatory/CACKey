@@ -6,8 +6,6 @@ ${MAKE:-make} -C aclocal
 autoconf; autoheader
 
 rm -rf autom4te.cache/
-<<<<<<< HEAD
-=======
 
 for basefile in install-sh config.sub config.guess; do
 	for path in /usr/share/automake-*; do
@@ -20,4 +18,3 @@ for basefile in install-sh config.sub config.guess; do
 		fi
 	done
 done
->>>>>>> trunk

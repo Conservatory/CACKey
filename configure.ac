@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-AC_INIT(cackey, 0.6.6.201207191606) 
-=======
-AC_INIT(cackey, 0.7.4) 
->>>>>>> trunk
+AC_INIT(cackey, 0.7.4)
 AC_CONFIG_HEADERS(config.h)
 
 dnl Locate standard tools
@@ -147,8 +143,6 @@ AC_LINK_IFELSE(
 	]
 )
 
-<<<<<<< HEAD
-=======
 dnl Option to enable DoD certs on hardware slot
 AC_ARG_ENABLE(dod-certs-on-hw-slots, AC_HELP_STRING([--enable-dod-certs-on-hw-slots], [Specify that DoD certificates should be made available on hardware token slots]), [
 	dodcertsonhwslots=$enableval
@@ -212,7 +206,6 @@ if ! test "${readers_exclude}" = 'no'; then
 	AC_DEFINE_UNQUOTED(CACKEY_READERS_EXCLUDE_DEFAULT, [$readers_exclude], [Substring to match to exclude readers])
 fi
 
->>>>>>> trunk
 dnl Set version script, to limit the scope of symbols
 DC_SETVERSIONSCRIPT(libcackey.vers, libcackey.syms)
 
