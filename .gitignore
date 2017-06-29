@@ -27,6 +27,7 @@
 .idea/
 CACKey.iml
 Makefile.in~
+Makefile
 ..gitignore.un~
 .gitignore~
 
