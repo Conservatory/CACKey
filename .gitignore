@@ -21,3 +21,13 @@
 *.i*86
 *.x86_64
 *.hex
+
+.Makefile.in.un~
+.Makefile.un~
+.idea/
+CACKey.iml
+Makefile.in~
+Makefile
+..gitignore.un~
+.gitignore~
+

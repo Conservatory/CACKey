@@ -1,13 +1,8 @@
 /* zlib.h -- interface of the 'zlib' general purpose compression library
-<<<<<<< HEAD
-  version 1.2.7, May 2nd, 2012
-
-  Copyright (C) 1995-2012 Jean-loup Gailly and Mark Adler
-=======
   version 1.2.8, April 28th, 2013
 
   Copyright (C) 1995-2013 Jean-loup Gailly and Mark Adler
->>>>>>> trunk
+
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -43,19 +38,12 @@
 extern "C" {
 #endif
 
-<<<<<<< HEAD
-#define ZLIB_VERSION "1.2.7"
-#define ZLIB_VERNUM 0x1270
-#define ZLIB_VER_MAJOR 1
-#define ZLIB_VER_MINOR 2
-#define ZLIB_VER_REVISION 7
-=======
 #define ZLIB_VERSION "1.2.8"
 #define ZLIB_VERNUM 0x1280
 #define ZLIB_VER_MAJOR 1
 #define ZLIB_VER_MINOR 2
 #define ZLIB_VER_REVISION 8
->>>>>>> trunk
+
 #define ZLIB_VER_SUBREVISION 0
 
 /*
@@ -853,8 +841,6 @@ ZEXTERN int ZEXPORT inflateSetDictionary OF((z_streamp strm,
    inflate().
 */
 
-<<<<<<< HEAD
-=======
 ZEXTERN int ZEXPORT inflateGetDictionary OF((z_streamp strm,
                                              Bytef *dictionary,
                                              uInt  *dictLength));
@@ -870,7 +856,7 @@ ZEXTERN int ZEXPORT inflateGetDictionary OF((z_streamp strm,
    stream state is inconsistent.
 */
 
->>>>>>> trunk
+
 ZEXTERN int ZEXPORT inflateSync OF((z_streamp strm));
 /*
      Skips invalid compressed data until a possible full flush point (see above
@@ -878,11 +864,8 @@ ZEXTERN int ZEXPORT inflateSync OF((z_streamp strm));
    available input is skipped.  No output is provided.
 
      inflateSync searches for a 00 00 FF FF pattern in the compressed data.
-<<<<<<< HEAD
-   All full flush points have this pattern, but not all occurences of this
-=======
    All full flush points have this pattern, but not all occurrences of this
->>>>>>> trunk
+
    pattern are full flush points.
 
      inflateSync returns Z_OK if a possible full flush point has been found,
@@ -1043,12 +1026,9 @@ ZEXTERN int ZEXPORT inflateBackInit OF((z_streamp strm, int windowBits,
    the version of the header file.
 */
 
-<<<<<<< HEAD
-typedef unsigned (*in_func) OF((void FAR *, unsigned char FAR * FAR *));
-=======
 typedef unsigned (*in_func) OF((void FAR *,
                                 z_const unsigned char FAR * FAR *));
->>>>>>> trunk
+
 typedef int (*out_func) OF((void FAR *, unsigned char FAR *, unsigned));
 
 ZEXTERN int ZEXPORT inflateBack OF((z_streamp strm,
@@ -1056,20 +1036,13 @@ ZEXTERN int ZEXPORT inflateBack OF((z_streamp strm,
                                     out_func out, void FAR *out_desc));
 /*
      inflateBack() does a raw inflate with a single call using a call-back
-<<<<<<< HEAD
-   interface for input and output.  This is more efficient than inflate() for
-   file i/o applications in that it avoids copying between the output and the
-   sliding window by simply making the window itself the output buffer.  This
-   function trusts the application to not change the output buffer passed by
-   the output function, at least until inflateBack() returns.
-=======
    interface for input and output.  This is potentially more efficient than
    inflate() for file i/o applications, in that it avoids copying between the
    output and the sliding window by simply making the window itself the output
    buffer.  inflate() can be faster on modern CPUs when used with large
    buffers.  inflateBack() trusts the application to not change the output
    buffer passed by the output function, at least until inflateBack() returns.
->>>>>>> trunk
+
 
      inflateBackInit() must be called first to allocate the internal state
    and to initialize the state with the user-provided window buffer.
@@ -1786,8 +1759,6 @@ ZEXTERN int            ZEXPORT deflateResetKeep OF((z_streamp));
 ZEXTERN gzFile         ZEXPORT gzopen_w OF((const wchar_t *path,
                                             const char *mode));
 #endif
-<<<<<<< HEAD
-=======
 #if defined(STDC) || defined(Z_HAVE_STDARG_H)
 #  ifndef Z_SOLO
 ZEXTERN int            ZEXPORTVA gzvprintf Z_ARG((gzFile file,
@@ -1795,7 +1766,7 @@ ZEXTERN int            ZEXPORTVA gzvprintf Z_ARG((gzFile file,
                                                   va_list va));
 #  endif
 #endif
->>>>>>> trunk
+
 
 #ifdef __cplusplus
 }

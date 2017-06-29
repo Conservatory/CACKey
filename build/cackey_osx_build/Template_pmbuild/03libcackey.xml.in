@@ -6,11 +6,8 @@
 		<post-install type="none"/>
 		<requireAuthorization/>
 		<installFrom relative="true" mod="true">cackey.dylib</installFrom>
-<<<<<<< HEAD
-		<installTo mod="true" relocatable="true">/usr/lib/pkcs11</installTo>
-=======
 		<installTo mod="true" relocatable="true">/usr/local/lib/pkcs11</installTo>
->>>>>>> trunk
+
 		<flags></flags>
 		<packageStore type="internal"></packageStore>
 		<mod>parent</mod>
